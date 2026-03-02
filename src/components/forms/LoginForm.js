@@ -27,7 +27,7 @@ export default function LoginForm() {
     try {
       const { user, session } = await signIn(data.email, data.password);
       const { data: profile } = await supabase
-        .from('profiles')
+        .from('users')
         .select('*')
         .eq('id', user.id)
         .single();

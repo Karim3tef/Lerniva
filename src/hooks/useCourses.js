@@ -18,8 +18,9 @@ export function useCourses() {
     try {
       const { data, error: fetchError, count } = await supabase
         .from('courses')
-        .select('*, profiles(full_name, avatar_url)', { count: 'exact' })
-        .eq('status', 'published')
+        .select('*, users(full_name, avatar_url)', { count: 'exact' })
+        .eq('is_published', true)
+        .eq('is_approved', true)
         .order('created_at', { ascending: false })
         .range(
           (pagination.page - 1) * pagination.perPage,
@@ -41,9 +42,9 @@ export function useCourses() {
     try {
       const { data } = await supabase
         .from('courses')
-        .select('*, profiles(full_name, avatar_url)')
-        .eq('status', 'published')
-        .eq('is_featured', true)
+        .select('*, users(full_name, avatar_url)')
+        .eq('is_published', true)
+        .eq('is_approved', true)
         .limit(6);
       setFeaturedCourses(data || MOCK_COURSES.slice(0, 6));
     } catch {

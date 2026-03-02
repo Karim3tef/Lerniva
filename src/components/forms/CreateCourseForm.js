@@ -36,8 +36,7 @@ export default function CreateCourseForm({ onSuccess }) {
           language: data.language,
           thumbnail_url: data.thumbnailUrl || null,
           teacher_id: user?.id,
-          status: 'draft',
-          created_at: new Date().toISOString(),
+          is_published: false,
         })
         .select()
         .single();

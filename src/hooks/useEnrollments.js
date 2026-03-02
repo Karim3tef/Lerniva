@@ -21,8 +21,8 @@ export function useEnrollments() {
       const { data, error: fetchError } = await supabase
         .from('enrollments')
         .select('*, courses(*)')
-        .eq('user_id', user.id)
-        .order('enrolled_at', { ascending: false });
+        .eq('student_id', user.id)
+        .order('purchased_at', { ascending: false });
 
       if (fetchError) throw fetchError;
       setEnrollments(data || []);
@@ -37,7 +37,7 @@ export function useEnrollments() {
     if (!user?.id) throw new Error('يجب تسجيل الدخول أولاً');
     const { data, error: enrollError } = await supabase
       .from('enrollments')
-      .insert({ user_id: user.id, course_id: courseId, enrolled_at: new Date().toISOString() })
+      .insert({ student_id: user.id, course_id: courseId })
       .select()
       .single();
     if (enrollError) throw enrollError;

@@ -1,3 +1,5 @@
+'use client';
+
 import Link from 'next/link';
 import { GraduationCap, Mail, Phone, Twitter, Youtube, Linkedin } from 'lucide-react';
 import { FOOTER_LINKS } from '@/constants';
