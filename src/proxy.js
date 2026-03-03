@@ -48,7 +48,7 @@ export async function proxy(request) {
       .eq('id', user.id)
       .single();
 
-    const role = profile?.role ?? 'student';
+    const role = profile?.role ?? user.user_metadata?.role ?? 'student';
 
     if (pathname.startsWith('/admin') && role !== 'admin') {
       return NextResponse.redirect(new URL(`/${role}/dashboard`, request.url));

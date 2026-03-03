@@ -8,34 +8,109 @@ import { createClient } from '@/lib/supabase';
 import { formatDate } from '@/lib/helpers';
 
 const downloadCertificate = async (cert) => {
-  const { jsPDF } = await import('jspdf');
-  const doc = new jsPDF({ orientation: 'landscape', format: 'a4' });
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(40);
-  doc.text('Certificate of Completion', 148, 60, { align: 'center' });
-  doc.setFontSize(20);
-  doc.text('Lerniva - \u0644\u0631\u0646\u064a\u0641\u0627', 148, 80, { align: 'center' });
-  doc.setFontSize(14);
-  doc.setFont('helvetica', 'normal');
-  doc.text('This is to certify that', 148, 105, { align: 'center' });
-  doc.setFontSize(24);
-  doc.setFont('helvetica', 'bold');
-  doc.text(cert.users?.full_name || 'Student', 148, 120, { align: 'center' });
-  doc.setFontSize(14);
-  doc.setFont('helvetica', 'normal');
-  doc.text('has successfully completed the course', 148, 135, { align: 'center' });
-  doc.setFontSize(20);
-  doc.setFont('helvetica', 'bold');
-  doc.text(cert.courses?.title || '', 148, 150, { align: 'center' });
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'normal');
-  doc.text(
-    `Issued on: ${new Date(cert.issued_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`,
-    148,
-    170,
-    { align: 'center' }
-  );
-  doc.save(`Lerniva-Certificate-${cert.courses?.title || 'Course'}.pdf`);
+  const studentName = cert.users?.full_name || 'Student';
+  const courseTitle = cert.courses?.title || '';
+  const issuedOn = cert.issued_at
+    ? new Date(cert.issued_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+    : '';
+  const safeTitle = (courseTitle || 'Course').replace(/[\\/:*?"<>|]/g, '-');
+
+  const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=1200,height=800');
+  if (!printWindow) {
+    throw new Error('تعذر فتح نافذة الطباعة');
+  }
+
+  printWindow.document.write(`
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <title>Lerniva Certificate - ${safeTitle}</title>
+        <style>
+          body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #f5f7fb;
+          }
+          .page {
+            width: 1123px;
+            height: 794px;
+            margin: 24px auto;
+            background: linear-gradient(135deg, #fff8e1, #ffffff);
+            border: 16px solid #f59e0b;
+            box-sizing: border-box;
+            padding: 72px 80px;
+            text-align: center;
+            position: relative;
+          }
+          .brand {
+            color: #4f46e5;
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 32px;
+          }
+          .title {
+            font-size: 46px;
+            font-weight: 700;
+            color: #111827;
+            margin-bottom: 18px;
+          }
+          .subtitle {
+            font-size: 18px;
+            color: #6b7280;
+            margin-bottom: 28px;
+          }
+          .name {
+            font-size: 40px;
+            font-weight: 700;
+            color: #b45309;
+            margin: 18px 0;
+          }
+          .course {
+            font-size: 28px;
+            font-weight: 700;
+            color: #1f2937;
+            margin: 18px 0 40px;
+          }
+          .meta {
+            font-size: 16px;
+            color: #4b5563;
+          }
+          .footer {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 48px;
+            font-size: 14px;
+            color: #6b7280;
+          }
+          @media print {
+            body {
+              background: white;
+            }
+            .page {
+              margin: 0;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="page">
+          <div class="brand">Lerniva - لرنيفا</div>
+          <div class="title">Certificate of Completion</div>
+          <div class="subtitle">This certifies that</div>
+          <div class="name">${studentName}</div>
+          <div class="subtitle">has successfully completed the course</div>
+          <div class="course">${courseTitle}</div>
+          <div class="meta">Issued on: ${issuedOn}</div>
+          <div class="footer">Use your browser's Save as PDF option to download this certificate.</div>
+        </div>
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
+  printWindow.focus();
+  printWindow.print();
 };
 
 export default function CertificatesPage() {
