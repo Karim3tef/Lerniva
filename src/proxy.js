@@ -29,7 +29,7 @@ export async function proxy(request) {
 
   const { data: { user } } = await supabase.auth.getUser();
 
-  const protectedRoutes = ['/student', '/teacher', '/admin', '/learn'];
+  const protectedRoutes = ['/student', '/teacher', '/admin', '/learn', '/checkout'];
   const authRoutes = ['/login', '/register', '/forgot-password', '/reset-password'];
 
   const isProtectedRoute = protectedRoutes.some((route) => pathname.startsWith(route));

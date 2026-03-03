@@ -129,6 +129,17 @@ AS $$
   LIMIT 1;
 $$;
 
+-- Helper to read any user's role by ID (used in RLS policies)
+CREATE OR REPLACE FUNCTION public.get_user_role(user_id UUID)
+RETURNS TEXT
+LANGUAGE SQL
+SECURITY DEFINER
+STABLE
+SET search_path = public
+AS $$
+  SELECT role FROM public.users WHERE id = user_id LIMIT 1;
+$$;
+
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE courses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE lessons ENABLE ROW LEVEL SECURITY;
