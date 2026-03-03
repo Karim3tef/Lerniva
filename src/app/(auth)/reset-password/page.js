@@ -43,11 +43,13 @@ export default function ResetPasswordPage() {
       const { error: updateError } = await supabase.auth.updateUser({ password });
       if (updateError) throw updateError;
       setSuccess(true);
+      // Brief delay so the user can see the success message before redirect
+      const REDIRECT_DELAY_MS = 2000;
       setTimeout(() => {
         const dashboardPath = role === 'admin' ? '/admin/dashboard' :
           role === 'teacher' ? '/teacher/dashboard' : '/student/dashboard';
         router.push(dashboardPath);
-      }, 2000);
+      }, REDIRECT_DELAY_MS);
     } catch (err) {
       setError(err.message || 'حدث خطأ. حاول مجدداً.');
     } finally {

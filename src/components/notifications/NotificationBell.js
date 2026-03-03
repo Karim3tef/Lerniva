@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { Bell } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
 
+const MAX_NOTIFICATIONS = 10;
+
 export default function NotificationBell({ userId }) {
   const [notifications, setNotifications] = useState([]);
   const [open, setOpen] = useState(false);
@@ -19,7 +21,7 @@ export default function NotificationBell({ userId }) {
         .select('*')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
-        .limit(10);
+        .limit(MAX_NOTIFICATIONS);
       setNotifications(data || []);
       setLoading(false);
     };
@@ -34,7 +36,7 @@ export default function NotificationBell({ userId }) {
         table: 'notifications',
         filter: `user_id=eq.${userId}`,
       }, (payload) => {
-        setNotifications((prev) => [payload.new, ...prev].slice(0, 10));
+        setNotifications((prev) => [payload.new, ...prev].slice(0, MAX_NOTIFICATIONS));
       })
       .subscribe();
 
