@@ -1,30 +1,75 @@
 'use client';
 
-import { useState } from 'react';
-import { Menu, TrendingUp, Users, Star, BookOpen } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Menu } from 'lucide-react';
 import Sidebar from '@/components/layout/Sidebar';
 import StatsCard from '@/components/dashboard/StatsCard';
 import RevenueChart from '@/components/dashboard/RevenueChart';
 import { TEACHER_NAVIGATION } from '@/constants';
+import { createClient } from '@/lib/supabase';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 
-const COURSE_STATS = [
-  { name: 'Python', students: 234, rating: 4.8 },
-  { name: 'رياضيات', students: 187, rating: 4.9 },
-  { name: 'ذكاء اصطناعي', students: 310, rating: 4.7 },
-  { name: 'فيزياء', students: 98, rating: 4.6 },
-];
-
-const CATEGORY_DATA = [
-  { name: 'برمجة', value: 45, color: '#4F46E5' },
-  { name: 'رياضيات', value: 25, color: '#F59E0B' },
-  { name: 'فيزياء', value: 18, color: '#10B981' },
-  { name: 'ذكاء اصطناعي', value: 12, color: '#EC4899' },
-];
+const CHART_COLORS = ['#4F46E5', '#F59E0B', '#10B981', '#EC4899', '#3B82F6', '#8B5CF6', '#F97316', '#14B8A6'];
 
 export default function TeacherAnalyticsPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [period, setPeriod] = useState('month');
+  const [analyticsData, setAnalyticsData] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchAnalytics = async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setLoading(false); return; }
+
+      const { data: courses } = await supabase
+        .from('courses')
+        .select('id, title, categories(name)')
+        .eq('teacher_id', user.id);
+
+      if (!courses || courses.length === 0) { setLoading(false); return; }
+      const courseIds = courses.map((c) => c.id);
+
+      const [{ data: enrollments }, { data: payments }, { data: reviews }] = await Promise.all([
+        supabase.from('enrollments').select('course_id').in('course_id', courseIds),
+        supabase.from('payments').select('course_id, amount').in('course_id', courseIds).eq('status', 'succeeded'),
+        supabase.from('reviews').select('course_id, rating').in('course_id', courseIds),
+      ]);
+
+      const analytics = courses.map((course) => ({
+        name: course.title.length > 20 ? course.title.substring(0, 20) + '…' : course.title,
+        fullTitle: course.title,
+        category: course.categories?.name || '—',
+        students: enrollments?.filter((e) => e.course_id === course.id).length || 0,
+        revenue: payments?.filter((p) => p.course_id === course.id).reduce((sum, p) => sum + Number(p.amount), 0) || 0,
+        rating: (() => {
+          const r = reviews?.filter((rv) => rv.course_id === course.id);
+          return r?.length ? (r.reduce((s, rv) => s + rv.rating, 0) / r.length).toFixed(1) : '—';
+        })(),
+      }));
+
+      setAnalyticsData(analytics);
+      setLoading(false);
+    };
+    fetchAnalytics();
+  }, []);
+
+  const totalStudents = analyticsData.reduce((s, c) => s + c.students, 0);
+  const totalRevenue = analyticsData.reduce((s, c) => s + c.revenue, 0);
+  const ratingsWithData = analyticsData.filter((c) => c.rating !== '—');
+  const avgRating = ratingsWithData.length
+    ? (ratingsWithData.reduce((s, c) => s + Number(c.rating), 0) / ratingsWithData.length).toFixed(1)
+    : '—';
+
+  // Build per-category student distribution for pie chart
+  const categoryMap = {};
+  analyticsData.forEach((c, i) => {
+    const cat = c.category;
+    if (!categoryMap[cat]) categoryMap[cat] = { name: cat, value: 0, color: CHART_COLORS[i % CHART_COLORS.length] };
+    categoryMap[cat].value += c.students;
+  });
+  const categoryData = Object.values(categoryMap);
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
@@ -56,60 +101,76 @@ export default function TeacherAnalyticsPage() {
         </header>
 
         <main className="p-6">
-          {/* Stats */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <StatsCard title="إجمالي الطلاب" value="1,234" icon="Users" color="indigo" trend="up" trendValue="+12.5%" subtitle="مقارنة بالشهر السابق" />
-            <StatsCard title="الإيرادات" value="28,000 ر.س" icon="DollarSign" color="emerald" trend="up" trendValue="+18.3%" subtitle="" />
-            <StatsCard title="متوسط التقييم" value="4.8" icon="Star" color="amber" subtitle="من 5 نجوم" />
-            <StatsCard title="معدل الإكمال" value="73%" icon="TrendingUp" color="purple" trend="up" trendValue="+5%" subtitle="" />
-          </div>
-
-          {/* Charts */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-            {/* Revenue Chart - takes 2 cols */}
-            <div className="lg:col-span-2">
-              <RevenueChart />
+          {loading ? (
+            <div className="flex items-center justify-center py-20">
+              <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
             </div>
+          ) : (
+            <>
+              {/* Stats */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <StatsCard title="إجمالي الطلاب" value={totalStudents.toLocaleString('ar-SA')} icon="Users" color="indigo" subtitle="جميع الدورات" />
+                <StatsCard title="الإيرادات" value={`${totalRevenue.toLocaleString('ar-SA')} ر.س`} icon="DollarSign" color="emerald" subtitle="" />
+                <StatsCard title="متوسط التقييم" value={avgRating} icon="Star" color="amber" subtitle="من 5 نجوم" />
+                <StatsCard title="عدد الدورات" value={analyticsData.length} icon="BookOpen" color="purple" subtitle="دوراتك النشطة" />
+              </div>
 
-            {/* Pie Chart */}
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-              <h3 className="font-bold text-gray-900 mb-4">توزيع الطلاب</h3>
-              <ResponsiveContainer width="100%" height={220}>
-                <PieChart>
-                  <Pie
-                    data={CATEGORY_DATA}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={90}
-                    paddingAngle={3}
-                    dataKey="value"
-                  >
-                    {CATEGORY_DATA.map((entry, index) => (
-                      <Cell key={index} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Legend
-                    formatter={(value) => <span style={{ fontSize: 11, fontFamily: 'Cairo' }}>{value}</span>}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
+              {/* Charts */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+                {/* Revenue Chart - takes 2 cols */}
+                <div className="lg:col-span-2">
+                  <RevenueChart />
+                </div>
 
-          {/* Course Performance */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-            <h3 className="font-bold text-gray-900 mb-5">أداء كل دورة</h3>
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={COURSE_STATS} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#94a3b8', fontFamily: 'Cairo' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: '#94a3b8', fontFamily: 'Cairo' }} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={{ fontFamily: 'Cairo', borderRadius: 12, border: '1px solid #f1f5f9' }} />
-                <Bar dataKey="students" fill="#4F46E5" radius={[6, 6, 0, 0]} name="الطلاب" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+                {/* Pie Chart */}
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+                  <h3 className="font-bold text-gray-900 mb-4">توزيع الطلاب</h3>
+                  {categoryData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={220}>
+                      <PieChart>
+                        <Pie
+                          data={categoryData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={60}
+                          outerRadius={90}
+                          paddingAngle={3}
+                          dataKey="value"
+                        >
+                          {categoryData.map((entry, index) => (
+                            <Cell key={index} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Legend
+                          formatter={(value) => <span style={{ fontSize: 11, fontFamily: 'Cairo' }}>{value}</span>}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="flex items-center justify-center h-[220px] text-gray-400 text-sm">لا توجد بيانات</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Course Performance */}
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+                <h3 className="font-bold text-gray-900 mb-5">أداء كل دورة</h3>
+                {analyticsData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={200}>
+                    <BarChart data={analyticsData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                      <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#94a3b8', fontFamily: 'Cairo' }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 11, fill: '#94a3b8', fontFamily: 'Cairo' }} axisLine={false} tickLine={false} />
+                      <Tooltip contentStyle={{ fontFamily: 'Cairo', borderRadius: 12, border: '1px solid #f1f5f9' }} />
+                      <Bar dataKey="students" fill="#4F46E5" radius={[6, 6, 0, 0]} name="الطلاب" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="flex items-center justify-center h-[200px] text-gray-400 text-sm">لا توجد بيانات بعد</div>
+                )}
+              </div>
+            </>
+          )}
         </main>
       </div>
     </div>
