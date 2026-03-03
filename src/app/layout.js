@@ -1,4 +1,5 @@
 import './globals.css';
+import { ToastProvider } from '@/components/ui/Toast';
 
 export const metadata = {
   title: 'لرنيفا - منصة تعلم العلوم والتقنية والهندسة والرياضيات باللغة العربية',
@@ -25,7 +26,9 @@ export default function RootLayout({ children }) {
         />
       </head>
       <body style={{ fontFamily: "'Cairo', sans-serif" }}>
-        {children}
+        <ToastProvider>
+          {children}
+        </ToastProvider>
       </body>
     </html>
   );

@@ -67,9 +67,10 @@ CREATE TABLE IF NOT EXISTS notifications (
 -- payments
 ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "payments_student_own" ON payments FOR SELECT USING (student_id = auth.uid());
-CREATE POLICY "payments_admin_all" ON payments FOR ALL USING (
-  EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin')
+CREATE POLICY "payments_teacher_own" ON payments FOR SELECT USING (
+  EXISTS (SELECT 1 FROM courses WHERE id = payments.course_id AND teacher_id = auth.uid())
 );
+CREATE POLICY "payments_admin_all" ON payments FOR ALL USING (public.get_my_role() = 'admin');
 
 -- certificates
 ALTER TABLE certificates ENABLE ROW LEVEL SECURITY;

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Menu, PlusCircle, Edit, BarChart2, Trash2, BookOpen } from 'lucide-react';
 import Sidebar from '@/components/layout/Sidebar';
+import ConfirmModal from '@/components/ui/ConfirmModal';
 import { TEACHER_NAVIGATION } from '@/constants';
 import { createClient } from '@/lib/supabase';
 import { getStatusLabel, getStatusColor, getLevelLabel, formatPrice } from '@/lib/helpers';
@@ -19,6 +20,8 @@ export default function TeacherCoursesPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [courseList, setCourseList] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [deleteModal, setDeleteModal] = useState({ open: false, courseId: null });
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     const fetchCourses = async () => {
@@ -39,10 +42,16 @@ export default function TeacherCoursesPage() {
   }, []);
 
   const handleDelete = async (courseId) => {
-    if (!confirm('هل أنت متأكد من حذف هذه الدورة؟ هذا الإجراء لا يمكن التراجع عنه.')) return;
+    setDeleteModal({ open: true, courseId });
+  };
+
+  const confirmDelete = async () => {
+    setDeleting(true);
     const supabase = createClient();
-    const { error } = await supabase.from('courses').delete().eq('id', courseId);
-    if (!error) setCourseList((prev) => prev.filter((c) => c.id !== courseId));
+    const { error } = await supabase.from('courses').delete().eq('id', deleteModal.courseId);
+    if (!error) setCourseList((prev) => prev.filter((c) => c.id !== deleteModal.courseId));
+    setDeleting(false);
+    setDeleteModal({ open: false, courseId: null });
   };
 
   const coursesWithStatus = courseList.map((c) => ({
@@ -59,6 +68,16 @@ export default function TeacherCoursesPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex">
       <Sidebar navigation={TEACHER_NAVIGATION} isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <ConfirmModal
+        isOpen={deleteModal.open}
+        onClose={() => setDeleteModal({ open: false, courseId: null })}
+        onConfirm={confirmDelete}
+        title="حذف الدورة"
+        message="هل أنت متأكد من حذف هذه الدورة؟ هذا الإجراء لا يمكن التراجع عنه."
+        confirmLabel="حذف"
+        confirmVariant="danger"
+        loading={deleting}
+      />
       <div className="flex-1 min-w-0">
         <header className="bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
           <div className="flex items-center gap-3">

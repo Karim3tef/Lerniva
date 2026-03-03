@@ -10,19 +10,13 @@ export async function POST(request) {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
 
-    const { course_id } = await request.json();
+    const { course_id, lesson_id, watch_duration = 0 } = await request.json();
 
-    if (!course_id) {
+    if (!course_id || !lesson_id) {
       return NextResponse.json({ error: 'بيانات ناقصة' }, { status: 400 });
     }
 
-    // Get total lessons for this course
-    const { count: totalLessons } = await supabase
-      .from('lessons')
-      .select('*', { count: 'exact', head: true })
-      .eq('course_id', course_id);
-
-    // Get enrollment to check current completed lessons count
+    // Verify enrollment
     const { data: enrollment } = await supabase
       .from('enrollments')
       .select('id, progress')
@@ -34,28 +28,66 @@ export async function POST(request) {
       return NextResponse.json({ error: 'غير مسجل في هذه الدورة' }, { status: 404 });
     }
 
-    if (!totalLessons || totalLessons === 0) {
-      return NextResponse.json({ progress: 0 });
+    // Get lesson duration to check if 80% watched
+    const { data: lesson } = await supabase
+      .from('lessons')
+      .select('duration')
+      .eq('id', lesson_id)
+      .single();
+
+    const lessonDurationSeconds = (lesson?.duration || 0) * 60;
+    const completed = lessonDurationSeconds > 0
+      ? watch_duration >= lessonDurationSeconds * 0.8
+      : true;
+
+    // Upsert lesson progress
+    const { error: progressError } = await supabase
+      .from('lesson_progress')
+      .upsert({
+        student_id: user.id,
+        lesson_id,
+        course_id,
+        watch_duration,
+        last_watched_at: new Date().toISOString(),
+        ...(completed && { completed: true, completed_at: new Date().toISOString() }),
+      }, { onConflict: 'student_id,lesson_id', ignoreDuplicates: false });
+
+    if (progressError) {
+      console.error('Lesson progress upsert error:', progressError);
     }
 
-    // Calculate new progress based on current progress
-    const currentCompleted = Math.round((enrollment.progress / 100) * totalLessons);
-    const newCompleted = Math.min(currentCompleted + 1, totalLessons);
-    const newProgress = Math.round((newCompleted / totalLessons) * 100);
+    // Recompute course progress
+    const { count: totalLessons } = await supabase
+      .from('lessons')
+      .select('*', { count: 'exact', head: true })
+      .eq('course_id', course_id);
+
+    const { count: completedLessons } = await supabase
+      .from('lesson_progress')
+      .select('*', { count: 'exact', head: true })
+      .eq('student_id', user.id)
+      .eq('course_id', course_id)
+      .eq('completed', true);
+
+    const newProgress = totalLessons > 0
+      ? Math.round((completedLessons / totalLessons) * 100)
+      : 0;
 
     // Update enrollment progress
-    const { error: updateError } = await supabase
-      .from('enrollments')
-      .update({ progress: newProgress })
-      .eq('id', enrollment.id);
-
-    if (updateError) {
-      return NextResponse.json({ error: 'حدث خطأ في تحديث التقدم' }, { status: 500 });
+    const updateData = { progress: newProgress };
+    if (newProgress === 100) {
+      updateData.completed_at = new Date().toISOString();
     }
 
-    return NextResponse.json({ progress: newProgress });
+    await supabase
+      .from('enrollments')
+      .update(updateData)
+      .eq('id', enrollment.id);
+
+    return NextResponse.json({ progress: newProgress, lesson_completed: completed });
   } catch (error) {
     console.error('Progress update error:', error);
     return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
   }
 }
+

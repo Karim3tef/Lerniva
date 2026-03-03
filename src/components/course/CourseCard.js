@@ -79,11 +79,11 @@ export default function CourseCard({ course, compact = false }) {
           <div className="flex items-center gap-2 mb-4 mt-auto">
             <div className="w-6 h-6 bg-indigo-100 rounded-full flex items-center justify-center flex-shrink-0">
               <span className="text-xs font-bold text-indigo-600">
-                {(course.profiles?.full_name || 'م').charAt(0)}
+                {(course.profiles?.full_name || course.users?.full_name || 'م').charAt(0)}
               </span>
             </div>
             <span className="text-xs text-gray-500 font-medium">
-              {course.profiles?.full_name || 'معلم غير محدد'}
+              {course.profiles?.full_name || course.users?.full_name || 'معلم غير محدد'}
             </span>
           </div>
 

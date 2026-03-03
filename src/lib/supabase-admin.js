@@ -1,9 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
+import { requireEnv } from './env';
 
 export function getSupabaseAdmin() {
   return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
-    process.env.SUPABASE_SERVICE_ROLE_KEY || 'placeholder-key'
+    requireEnv('NEXT_PUBLIC_SUPABASE_URL') || 'https://placeholder.supabase.co',
+    requireEnv('SUPABASE_SERVICE_ROLE_KEY') || 'placeholder-key'
   );
 }
 
