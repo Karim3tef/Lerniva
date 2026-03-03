@@ -1,29 +1,85 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Menu, Search, Eye, CheckCircle, XCircle, BookOpen } from 'lucide-react';
 import Sidebar from '@/components/layout/Sidebar';
 import Badge from '@/components/ui/Badge';
 import { ADMIN_NAVIGATION } from '@/constants';
 import { getLevelLabel, formatPrice, formatDate } from '@/lib/helpers';
-import { MOCK_COURSES } from '@/constants';
+import { createClient } from '@/lib/supabase';
 
-const ADMIN_COURSES = MOCK_COURSES.map((c, i) => ({
-  ...c,
-  status: ['published', 'pending', 'published', 'draft', 'published', 'pending'][i],
-  teacher: ['د. أحمد الشمري', 'أ. سارة الزهراني', 'م. خالد العمري', 'د. فاطمة الحربي', 'أ. محمد القحطاني', 'م. عمر السلمي'][i],
-}));
+function deriveStatus(course) {
+  if (course.is_published && course.is_approved) return 'published';
+  if (course.is_published && !course.is_approved) return 'pending';
+  return 'draft';
+}
 
 export default function AdminCoursesPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [courses, setCourses] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const filtered = ADMIN_COURSES.filter((c) => {
-    const matchSearch = c.title.includes(search) || c.teacher.includes(search);
+  useEffect(() => {
+    fetchCourses();
+  }, []);
+
+  async function fetchCourses() {
+    const supabase = createClient();
+    const { data } = await supabase
+      .from('courses')
+      .select('*, users(full_name)')
+      .order('created_at', { ascending: false });
+    const mapped = (data || []).map((c) => ({
+      ...c,
+      teacher: c.users?.full_name || '—',
+      status: deriveStatus(c),
+    }));
+    setCourses(mapped);
+    setLoading(false);
+  }
+
+  async function approveCourse(id) {
+    const supabase = createClient();
+    const { error } = await supabase
+      .from('courses')
+      .update({ is_approved: true })
+      .eq('id', id);
+    if (!error) {
+      setCourses((prev) =>
+        prev.map((c) =>
+          c.id === id ? { ...c, is_approved: true, status: 'published' } : c
+        )
+      );
+    }
+  }
+
+  async function rejectCourse(id) {
+    const supabase = createClient();
+    const { error } = await supabase
+      .from('courses')
+      .update({ is_approved: false, is_published: false })
+      .eq('id', id);
+    if (!error) {
+      setCourses((prev) =>
+        prev.map((c) =>
+          c.id === id
+            ? { ...c, is_approved: false, is_published: false, status: 'draft' }
+            : c
+        )
+      );
+    }
+  }
+
+  const filtered = courses.filter((c) => {
+    const matchSearch =
+      (c.title || '').includes(search) || (c.teacher || '').includes(search);
     const matchStatus = statusFilter === 'all' || c.status === statusFilter;
     return matchSearch && matchStatus;
   });
+
+  const pendingCount = courses.filter((c) => c.status === 'pending').length;
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
@@ -35,7 +91,7 @@ export default function AdminCoursesPage() {
           </button>
           <div>
             <h1 className="text-lg font-black text-gray-900">إدارة الدورات</h1>
-            <p className="text-xs text-gray-500">{ADMIN_COURSES.length} دورة في المنصة</p>
+            <p className="text-xs text-gray-500">{courses.length} دورة في المنصة</p>
           </div>
         </header>
 
@@ -68,9 +124,9 @@ export default function AdminCoursesPage() {
                     }`}
                   >
                     {f.label}
-                    {f.value === 'pending' && (
+                    {f.value === 'pending' && pendingCount > 0 && (
                       <span className="mr-1.5 bg-amber-500 text-white text-xs w-4 h-4 rounded-full inline-flex items-center justify-center">
-                        {ADMIN_COURSES.filter((c) => c.status === 'pending').length}
+                        {pendingCount}
                       </span>
                     )}
                   </button>
@@ -81,68 +137,86 @@ export default function AdminCoursesPage() {
 
           {/* Courses Table */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b border-gray-100">
-                  <tr>
-                    <th className="text-right py-3 px-4 font-bold text-gray-500 text-xs">الدورة</th>
-                    <th className="text-right py-3 px-4 font-bold text-gray-500 text-xs hidden md:table-cell">المعلم</th>
-                    <th className="text-right py-3 px-4 font-bold text-gray-500 text-xs hidden sm:table-cell">السعر</th>
-                    <th className="text-right py-3 px-4 font-bold text-gray-500 text-xs hidden lg:table-cell">الطلاب</th>
-                    <th className="text-right py-3 px-4 font-bold text-gray-500 text-xs">الحالة</th>
-                    <th className="text-right py-3 px-4 font-bold text-gray-500 text-xs">الإجراءات</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {filtered.map((course) => (
-                    <tr key={course.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="py-4 px-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center flex-shrink-0">
-                            <BookOpen size={16} className="text-white" />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="font-semibold text-gray-900 truncate max-w-48">{course.title}</p>
-                            <p className="text-xs text-gray-400">{getLevelLabel(course.level)}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="py-4 px-4 hidden md:table-cell text-gray-600 text-xs">{course.teacher}</td>
-                      <td className="py-4 px-4 hidden sm:table-cell text-gray-600 font-medium">{formatPrice(course.price)}</td>
-                      <td className="py-4 px-4 hidden lg:table-cell text-gray-600">{course.enrollment_count}</td>
-                      <td className="py-4 px-4">
-                        <Badge
-                          variant={
-                            course.status === 'published' ? 'success' :
-                            course.status === 'pending' ? 'warning' : 'default'
-                          }
-                        >
-                          {course.status === 'published' ? 'منشور' :
-                           course.status === 'pending' ? 'قيد المراجعة' : 'مسودة'}
-                        </Badge>
-                      </td>
-                      <td className="py-4 px-4">
-                        <div className="flex items-center gap-1">
-                          <button className="p-1.5 hover:bg-blue-50 rounded-lg text-gray-400 hover:text-blue-600 transition-colors" title="مراجعة">
-                            <Eye size={14} />
-                          </button>
-                          {course.status === 'pending' && (
-                            <>
-                              <button className="p-1.5 hover:bg-emerald-50 rounded-lg text-gray-400 hover:text-emerald-600 transition-colors" title="قبول">
-                                <CheckCircle size={14} />
-                              </button>
-                              <button className="p-1.5 hover:bg-red-50 rounded-lg text-gray-400 hover:text-red-600 transition-colors" title="رفض">
-                                <XCircle size={14} />
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </td>
+            {loading ? (
+              <div className="text-center py-12 text-gray-400 text-sm">جارٍ التحميل...</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b border-gray-100">
+                    <tr>
+                      <th className="text-right py-3 px-4 font-bold text-gray-500 text-xs">الدورة</th>
+                      <th className="text-right py-3 px-4 font-bold text-gray-500 text-xs hidden md:table-cell">المعلم</th>
+                      <th className="text-right py-3 px-4 font-bold text-gray-500 text-xs hidden sm:table-cell">السعر</th>
+                      <th className="text-right py-3 px-4 font-bold text-gray-500 text-xs hidden lg:table-cell">الطلاب</th>
+                      <th className="text-right py-3 px-4 font-bold text-gray-500 text-xs">الحالة</th>
+                      <th className="text-right py-3 px-4 font-bold text-gray-500 text-xs">الإجراءات</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {filtered.map((course) => (
+                      <tr key={course.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="py-4 px-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center flex-shrink-0">
+                              <BookOpen size={16} className="text-white" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-semibold text-gray-900 truncate max-w-48">{course.title}</p>
+                              <p className="text-xs text-gray-400">{getLevelLabel(course.level)}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-4 px-4 hidden md:table-cell text-gray-600 text-xs">{course.teacher}</td>
+                        <td className="py-4 px-4 hidden sm:table-cell text-gray-600 font-medium">{formatPrice(course.price)}</td>
+                        <td className="py-4 px-4 hidden lg:table-cell text-gray-600">{course.enrollment_count ?? 0}</td>
+                        <td className="py-4 px-4">
+                          <Badge
+                            variant={
+                              course.status === 'published' ? 'success' :
+                              course.status === 'pending' ? 'warning' : 'default'
+                            }
+                          >
+                            {course.status === 'published' ? 'منشور' :
+                             course.status === 'pending' ? 'قيد المراجعة' : 'مسودة'}
+                          </Badge>
+                        </td>
+                        <td className="py-4 px-4">
+                          <div className="flex items-center gap-1">
+                            <button
+                              className="p-1.5 hover:bg-blue-50 rounded-lg text-gray-400 hover:text-blue-600 transition-colors"
+                              title="مراجعة"
+                            >
+                              <Eye size={14} />
+                            </button>
+                            {course.status === 'pending' && (
+                              <>
+                                <button
+                                  onClick={() => approveCourse(course.id)}
+                                  className="p-1.5 hover:bg-emerald-50 rounded-lg text-gray-400 hover:text-emerald-600 transition-colors"
+                                  title="قبول"
+                                >
+                                  <CheckCircle size={14} />
+                                </button>
+                                <button
+                                  onClick={() => rejectCourse(course.id)}
+                                  className="p-1.5 hover:bg-red-50 rounded-lg text-gray-400 hover:text-red-600 transition-colors"
+                                  title="رفض"
+                                >
+                                  <XCircle size={14} />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {filtered.length === 0 && (
+                  <div className="text-center py-12 text-gray-400 text-sm">لا توجد دورات</div>
+                )}
+              </div>
+            )}
           </div>
         </main>
       </div>

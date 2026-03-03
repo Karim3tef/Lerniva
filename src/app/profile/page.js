@@ -1,20 +1,50 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { User, Mail, Shield, BookOpen, Award, Edit3, Camera, LogOut } from 'lucide-react';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import Button from '@/components/ui/Button';
 import useAuthStore from '@/store/authStore';
+import { createClient } from '@/lib/supabase';
 
 export default function ProfilePage() {
   const { isAuthenticated, user, profile, getRole } = useAuthStore();
   const [editMode, setEditMode] = useState(false);
+  const [fullName, setFullName] = useState('');
+  const [bio, setBio] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState('');
+  const [saveError, setSaveError] = useState('');
 
   const role = getRole();
   const displayName = profile?.full_name || user?.user_metadata?.full_name || 'المستخدم';
   const email = user?.email || profile?.email || '';
+
+  useEffect(() => {
+    setFullName(profile?.full_name || user?.user_metadata?.full_name || '');
+    setBio(profile?.bio || '');
+  }, [profile, user]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveSuccess('');
+    setSaveError('');
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from('users')
+        .update({ full_name: fullName, bio })
+        .eq('id', user.id);
+      if (error) throw error;
+      setSaveSuccess('تم حفظ التغييرات بنجاح');
+    } catch (err) {
+      setSaveError(err.message || 'حدث خطأ في الحفظ');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const roleLabels = { student: 'طالب', teacher: 'معلم', admin: 'مدير' };
   const roleColors = {
@@ -109,8 +139,18 @@ export default function ProfilePage() {
                       <label className="text-xs font-semibold text-gray-500 mb-1.5 block">الاسم الكامل</label>
                       <input
                         type="text"
-                        defaultValue={displayName}
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
                         className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-500 mb-1.5 block">نبذة شخصية</label>
+                      <textarea
+                        value={bio}
+                        onChange={(e) => setBio(e.target.value)}
+                        rows={3}
+                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
                       />
                     </div>
                     <div>
@@ -122,7 +162,15 @@ export default function ProfilePage() {
                         className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm bg-gray-50 text-gray-400 cursor-not-allowed"
                       />
                     </div>
-                    <Button onClick={() => setEditMode(false)}>حفظ التغييرات</Button>
+                    {saveSuccess && (
+                      <p className="text-sm text-emerald-600 font-medium">{saveSuccess}</p>
+                    )}
+                    {saveError && (
+                      <p className="text-sm text-red-500 font-medium">{saveError}</p>
+                    )}
+                    <Button onClick={handleSave} disabled={saving}>
+                      {saving ? 'جاري الحفظ...' : 'حفظ التغييرات'}
+                    </Button>
                   </div>
                 ) : (
                   <div className="space-y-3">

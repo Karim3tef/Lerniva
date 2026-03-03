@@ -1,23 +1,68 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Menu, PlusCircle, ChevronLeft } from 'lucide-react';
+import { Menu, PlusCircle, ChevronLeft, Loader2 } from 'lucide-react';
 import Sidebar from '@/components/layout/Sidebar';
 import StatsCard from '@/components/dashboard/StatsCard';
 import RevenueChart from '@/components/dashboard/RevenueChart';
 import { TEACHER_NAVIGATION } from '@/constants';
-import { MOCK_COURSES } from '@/constants';
 import { getStatusLabel, getStatusColor, formatPrice } from '@/lib/helpers';
-
-const MY_TEACHER_COURSES = MOCK_COURSES.slice(0, 4).map((c, i) => ({
-  ...c,
-  status: ['published', 'published', 'draft', 'published'][i],
-  revenue: [12400, 8900, 0, 6700][i],
-}));
+import { createClient } from '@/lib/supabase';
 
 export default function TeacherDashboardPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [courses, setCourses] = useState([]);
+  const [totalStudents, setTotalStudents] = useState(0);
+  const [totalRevenue, setTotalRevenue] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setLoading(false); return; }
+
+      const { data: coursesData } = await supabase
+        .from('courses')
+        .select('id, title, is_published, is_approved')
+        .eq('teacher_id', user.id);
+
+      const courseList = coursesData || [];
+      setCourses(courseList);
+
+      const courseIds = courseList.map((c) => c.id);
+
+      if (courseIds.length > 0) {
+        const [{ count }, { data: payments }] = await Promise.all([
+          supabase
+            .from('enrollments')
+            .select('*', { count: 'exact', head: true })
+            .in('course_id', courseIds),
+          supabase
+            .from('payments')
+            .select('amount')
+            .in('course_id', courseIds)
+            .eq('status', 'succeeded'),
+        ]);
+
+        setTotalStudents(count || 0);
+        setTotalRevenue((payments || []).reduce((sum, p) => sum + Number(p.amount), 0));
+      }
+
+      setLoading(false);
+    };
+    fetchData();
+  }, []);
+
+  const publishedCount = courses.filter((c) => c.is_published).length;
+  const draftCount = courses.filter((c) => !c.is_published).length;
+
+  const getStatusFromCourse = (course) => {
+    if (!course.is_published) return 'draft';
+    if (!course.is_approved) return 'pending';
+    return 'published';
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
@@ -42,57 +87,85 @@ export default function TeacherDashboardPage() {
         </header>
 
         <main className="p-6">
-          {/* Stats */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <StatsCard title="إجمالي الطلاب" value="1,234" icon="Users" color="indigo" trend="up" trendValue="+89 هذا الشهر" subtitle="" />
-            <StatsCard title="إجمالي الإيرادات" value="28,000 ر.س" icon="DollarSign" color="emerald" trend="up" trendValue="+15% هذا الشهر" subtitle="" />
-            <StatsCard title="دوراتي" value="4" icon="BookOpen" color="amber" subtitle="3 منشورة، 1 مسودة" />
-            <StatsCard title="متوسط التقييم" value="4.8 ⭐" icon="Star" color="purple" subtitle="من 5 نجوم" />
-          </div>
-
-          {/* Revenue Chart */}
-          <div className="mb-6">
-            <RevenueChart title="الإيرادات الشهرية" />
-          </div>
-
-          {/* My Courses Table */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-bold text-gray-900">دوراتي الأخيرة</h2>
-              <Link href="/teacher/courses" className="flex items-center gap-1 text-sm text-indigo-600 font-semibold">
-                عرض الكل <ChevronLeft size={16} />
-              </Link>
+          {loading ? (
+            <div className="flex items-center justify-center py-24">
+              <Loader2 size={32} className="animate-spin text-indigo-600" />
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100">
-                    <th className="text-right py-3 px-4 font-bold text-gray-500 text-xs">الدورة</th>
-                    <th className="text-right py-3 px-4 font-bold text-gray-500 text-xs">الطلاب</th>
-                    <th className="text-right py-3 px-4 font-bold text-gray-500 text-xs">الإيراد</th>
-                    <th className="text-right py-3 px-4 font-bold text-gray-500 text-xs">الحالة</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {MY_TEACHER_COURSES.map((course) => (
-                    <tr key={course.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="py-3 px-4">
-                        <p className="font-semibold text-gray-900 line-clamp-1">{course.title}</p>
-                        <p className="text-xs text-gray-400">{course.category}</p>
-                      </td>
-                      <td className="py-3 px-4 text-gray-600 font-medium">{course.enrollment_count}</td>
-                      <td className="py-3 px-4 text-gray-600 font-medium">{formatPrice(course.revenue)}</td>
-                      <td className="py-3 px-4">
-                        <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${getStatusColor(course.status)}`}>
-                          {getStatusLabel(course.status)}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          ) : (
+            <>
+              {/* Stats */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <StatsCard
+                  title="إجمالي الطلاب"
+                  value={String(totalStudents)}
+                  icon="Users"
+                  color="indigo"
+                  subtitle=""
+                />
+                <StatsCard
+                  title="إجمالي الإيرادات"
+                  value={`${totalRevenue.toLocaleString('ar-SA')} ر.س`}
+                  icon="DollarSign"
+                  color="emerald"
+                  subtitle=""
+                />
+                <StatsCard
+                  title="دوراتي"
+                  value={String(courses.length)}
+                  icon="BookOpen"
+                  color="amber"
+                  subtitle={`${publishedCount} منشورة، ${draftCount} مسودة`}
+                />
+                <StatsCard title="متوسط التقييم" value="—" icon="Star" color="purple" subtitle="من 5 نجوم" />
+              </div>
+
+              {/* Revenue Chart */}
+              <div className="mb-6">
+                <RevenueChart title="الإيرادات الشهرية" />
+              </div>
+
+              {/* My Courses Table */}
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+                <div className="flex items-center justify-between mb-5">
+                  <h2 className="text-lg font-bold text-gray-900">دوراتي الأخيرة</h2>
+                  <Link href="/teacher/courses" className="flex items-center gap-1 text-sm text-indigo-600 font-semibold">
+                    عرض الكل <ChevronLeft size={16} />
+                  </Link>
+                </div>
+                {courses.length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-8">لم تضف أي دورة بعد</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-gray-100">
+                          <th className="text-right py-3 px-4 font-bold text-gray-500 text-xs">الدورة</th>
+                          <th className="text-right py-3 px-4 font-bold text-gray-500 text-xs">الحالة</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {courses.slice(0, 5).map((course) => {
+                          const status = getStatusFromCourse(course);
+                          return (
+                            <tr key={course.id} className="hover:bg-gray-50 transition-colors">
+                              <td className="py-3 px-4">
+                                <p className="font-semibold text-gray-900 line-clamp-1">{course.title}</p>
+                              </td>
+                              <td className="py-3 px-4">
+                                <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${getStatusColor(status)}`}>
+                                  {getStatusLabel(status)}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </main>
       </div>
     </div>

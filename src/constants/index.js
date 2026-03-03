@@ -47,6 +47,7 @@ export const NAVIGATION = [
 export const STUDENT_NAVIGATION = [
   { href: '/student/dashboard', label: 'لوحة التحكم', icon: 'LayoutDashboard' },
   { href: '/student/my-courses', label: 'دوراتي', icon: 'BookOpen' },
+  { href: '/student/certificates', label: 'شهاداتي', icon: 'Award' },
 ];
 
 export const TEACHER_NAVIGATION = [
@@ -54,6 +55,7 @@ export const TEACHER_NAVIGATION = [
   { href: '/teacher/courses', label: 'دوراتي', icon: 'BookOpen' },
   { href: '/teacher/create-course', label: 'إضافة دورة', icon: 'PlusCircle' },
   { href: '/teacher/analytics', label: 'التحليلات', icon: 'BarChart2' },
+  { href: '/teacher/withdrawals', label: 'السحب', icon: 'DollarSign' },
 ];
 
 export const ADMIN_NAVIGATION = [
@@ -61,6 +63,7 @@ export const ADMIN_NAVIGATION = [
   { href: '/admin/users', label: 'المستخدمون', icon: 'Users' },
   { href: '/admin/courses', label: 'الدورات', icon: 'BookOpen' },
   { href: '/admin/refunds', label: 'المبالغ المستردة', icon: 'RefreshCw' },
+  { href: '/admin/withdrawals', label: 'طلبات السحب', icon: 'DollarSign' },
 ];
 
 export const STATS = [

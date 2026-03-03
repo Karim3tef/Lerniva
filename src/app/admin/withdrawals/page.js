@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Menu, CheckCircle, XCircle, RefreshCw, AlertCircle } from 'lucide-react';
+import { Menu, CheckCircle, XCircle, DollarSign, AlertCircle } from 'lucide-react';
 import Sidebar from '@/components/layout/Sidebar';
 import Badge from '@/components/ui/Badge';
 import { ADMIN_NAVIGATION } from '@/constants';
@@ -14,60 +14,60 @@ const STATUS_CONFIG = {
   rejected: { label: 'مرفوض', variant: 'danger' },
 };
 
-export default function AdminRefundsPage() {
+export default function AdminWithdrawalsPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
-  const [refunds, setRefunds] = useState([]);
+  const [withdrawals, setWithdrawals] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchRefunds();
+    fetchWithdrawals();
   }, []);
 
-  async function fetchRefunds() {
+  async function fetchWithdrawals() {
     const supabase = createClient();
     const { data } = await supabase
-      .from('refunds')
-      .select('*, users(full_name, email), courses(title)')
+      .from('withdrawals')
+      .select('*, users(full_name, email)')
       .order('created_at', { ascending: false });
-    setRefunds(data || []);
+    setWithdrawals(data || []);
     setLoading(false);
   }
 
-  async function approveRefund(id) {
+  async function approveWithdrawal(id) {
     const supabase = createClient();
     const { error } = await supabase
-      .from('refunds')
+      .from('withdrawals')
       .update({ status: 'approved' })
       .eq('id', id);
     if (!error) {
-      setRefunds((prev) =>
-        prev.map((r) => (r.id === id ? { ...r, status: 'approved' } : r))
+      setWithdrawals((prev) =>
+        prev.map((w) => (w.id === id ? { ...w, status: 'approved' } : w))
       );
     }
   }
 
-  async function rejectRefund(id) {
+  async function rejectWithdrawal(id) {
     const supabase = createClient();
     const { error } = await supabase
-      .from('refunds')
+      .from('withdrawals')
       .update({ status: 'rejected' })
       .eq('id', id);
     if (!error) {
-      setRefunds((prev) =>
-        prev.map((r) => (r.id === id ? { ...r, status: 'rejected' } : r))
+      setWithdrawals((prev) =>
+        prev.map((w) => (w.id === id ? { ...w, status: 'rejected' } : w))
       );
     }
   }
 
-  const filtered = refunds.filter((r) =>
-    statusFilter === 'all' ? true : r.status === statusFilter
+  const filtered = withdrawals.filter((w) =>
+    statusFilter === 'all' ? true : w.status === statusFilter
   );
 
-  const pendingCount = refunds.filter((r) => r.status === 'pending').length;
-  const totalPending = refunds
-    .filter((r) => r.status === 'pending')
-    .reduce((sum, r) => sum + (r.amount || 0), 0);
+  const pendingCount = withdrawals.filter((w) => w.status === 'pending').length;
+  const totalPending = withdrawals
+    .filter((w) => w.status === 'pending')
+    .reduce((sum, w) => sum + (w.amount || 0), 0);
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
@@ -78,9 +78,9 @@ export default function AdminRefundsPage() {
             <Menu size={20} />
           </button>
           <div className="flex items-center gap-3">
-            <RefreshCw size={20} className="text-amber-500" />
+            <DollarSign size={20} className="text-emerald-500" />
             <div>
-              <h1 className="text-lg font-black text-gray-900">طلبات الاسترداد</h1>
+              <h1 className="text-lg font-black text-gray-900">طلبات السحب</h1>
               <p className="text-xs text-gray-500">{pendingCount} طلبات تنتظر المراجعة</p>
             </div>
           </div>
@@ -89,13 +89,13 @@ export default function AdminRefundsPage() {
         <main className="p-6">
           {/* Summary */}
           {pendingCount > 0 && (
-            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 mb-6 flex items-center gap-4">
-              <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                <AlertCircle size={20} className="text-amber-600" />
+            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 mb-6 flex items-center gap-4">
+              <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                <AlertCircle size={20} className="text-emerald-600" />
               </div>
               <div>
-                <p className="font-bold text-amber-800">{pendingCount} طلبات استرداد معلقة</p>
-                <p className="text-sm text-amber-600">إجمالي مبالغ مطلوبة: {formatPrice(totalPending)}</p>
+                <p className="font-bold text-emerald-800">{pendingCount} طلبات سحب معلقة</p>
+                <p className="text-sm text-emerald-600">إجمالي المبالغ المطلوبة: {formatPrice(totalPending)}</p>
               </div>
             </div>
           )}
@@ -112,7 +112,9 @@ export default function AdminRefundsPage() {
                 key={f.value}
                 onClick={() => setStatusFilter(f.value)}
                 className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
-                  statusFilter === f.value ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:border-indigo-300'
+                  statusFilter === f.value
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-white text-gray-600 border border-gray-200 hover:border-indigo-300'
                 }`}
               >
                 {f.label}
@@ -120,54 +122,62 @@ export default function AdminRefundsPage() {
             ))}
           </div>
 
-          {/* Refund Cards */}
+          {/* Withdrawal Cards */}
           {loading ? (
             <div className="text-center py-12 text-gray-400 text-sm">جارٍ التحميل...</div>
           ) : (
             <div className="space-y-4">
-              {filtered.map((refund) => {
-                const studentName = refund.users?.full_name || '—';
-                const studentEmail = refund.users?.email || '—';
-                const courseTitle = refund.courses?.title || refund.course_title || '—';
-                const status = refund.status || 'pending';
+              {filtered.map((withdrawal) => {
+                const teacherName = withdrawal.users?.full_name || '—';
+                const teacherEmail = withdrawal.users?.email || '—';
+                const status = withdrawal.status || 'pending';
                 const statusCfg = STATUS_CONFIG[status] || STATUS_CONFIG.pending;
                 return (
-                  <div key={refund.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+                  <div key={withdrawal.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
                     <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                       <div className="flex items-start gap-4">
-                        <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center flex-shrink-0">
-                          <span className="font-bold text-indigo-600 text-sm">{studentName.charAt(0)}</span>
+                        <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center flex-shrink-0">
+                          <span className="font-bold text-emerald-600 text-sm">{teacherName.charAt(0)}</span>
                         </div>
                         <div>
                           <div className="flex items-center gap-3 mb-1">
-                            <h3 className="font-bold text-gray-900">{studentName}</h3>
+                            <h3 className="font-bold text-gray-900">{teacherName}</h3>
                             <Badge variant={statusCfg.variant}>{statusCfg.label}</Badge>
                           </div>
-                          <p className="text-xs text-gray-400 mb-2">{studentEmail}</p>
-                          <p className="text-sm text-gray-700 mb-1">
-                            <span className="font-semibold">الدورة:</span> {courseTitle}
-                          </p>
-                          <p className="text-sm text-gray-600">
-                            <span className="font-semibold">السبب:</span> {refund.reason || '—'}
-                          </p>
+                          <p className="text-xs text-gray-400 mb-2">{teacherEmail}</p>
+                          {withdrawal.bank_name && (
+                            <p className="text-sm text-gray-700 mb-1">
+                              <span className="font-semibold">البنك:</span> {withdrawal.bank_name}
+                            </p>
+                          )}
+                          {withdrawal.account_number && (
+                            <p className="text-sm text-gray-600 mb-1">
+                              <span className="font-semibold">رقم الحساب:</span> {withdrawal.account_number}
+                            </p>
+                          )}
+                          {withdrawal.notes && (
+                            <p className="text-sm text-gray-600">
+                              <span className="font-semibold">ملاحظات:</span> {withdrawal.notes}
+                            </p>
+                          )}
                           <p className="text-xs text-gray-400 mt-2">
-                            تاريخ الطلب: {formatDate(refund.created_at)}
+                            تاريخ الطلب: {formatDate(withdrawal.created_at)}
                           </p>
                         </div>
                       </div>
                       <div className="flex flex-col items-end gap-3">
-                        <p className="text-2xl font-black text-gray-900">{formatPrice(refund.amount || 0)}</p>
+                        <p className="text-2xl font-black text-gray-900">{formatPrice(withdrawal.amount || 0)}</p>
                         {status === 'pending' && (
                           <div className="flex gap-2">
                             <button
-                              onClick={() => approveRefund(refund.id)}
+                              onClick={() => approveWithdrawal(withdrawal.id)}
                               className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors"
                             >
                               <CheckCircle size={14} />
                               قبول
                             </button>
                             <button
-                              onClick={() => rejectRefund(refund.id)}
+                              onClick={() => rejectWithdrawal(withdrawal.id)}
                               className="flex items-center gap-1.5 px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl text-xs font-bold transition-colors border border-red-200"
                             >
                               <XCircle size={14} />
@@ -180,8 +190,8 @@ export default function AdminRefundsPage() {
                   </div>
                 );
               })}
-              {filtered.length === 0 && !loading && (
-                <div className="text-center py-12 text-gray-400 text-sm">لا توجد طلبات استرداد</div>
+              {filtered.length === 0 && (
+                <div className="text-center py-12 text-gray-400 text-sm">لا توجد طلبات سحب</div>
               )}
             </div>
           )}

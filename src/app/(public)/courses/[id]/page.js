@@ -1,12 +1,12 @@
 'use client';
 
-import { use } from 'react';
+import { use, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Star, Clock, Users, BookOpen, Play, ArrowRight, CheckCircle, Award } from 'lucide-react';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import Button from '@/components/ui/Button';
-import { MOCK_COURSES, CATEGORIES } from '@/constants';
+import { createClient } from '@/lib/supabase';
 import { formatPrice, formatDuration, formatNumber, getLevelLabel, getLevelColor } from '@/lib/helpers';
 import useAuthStore from '@/store/authStore';
 
@@ -14,8 +14,48 @@ export default function CourseDetailPage({ params }) {
   const { id } = use(params);
   const { isAuthenticated } = useAuthStore();
 
-  const course = MOCK_COURSES.find((c) => c.id === id);
-  const category = course ? CATEGORIES.find((c) => c.id === course.category) : null;
+  const [course, setCourse] = useState(null);
+  const [reviews, setReviews] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      const supabase = createClient();
+      const { data: courseData } = await supabase
+        .from('courses')
+        .select('*, categories(name, slug), users(full_name, avatar_url), reviews(rating)')
+        .eq('id', id)
+        .single();
+
+      setCourse(courseData);
+
+      if (courseData) {
+        const { data: reviewsData } = await supabase
+          .from('reviews')
+          .select('*, users(full_name, avatar_url)')
+          .eq('course_id', id)
+          .order('created_at', { ascending: false });
+        setReviews(reviewsData || []);
+      }
+      setLoading(false);
+    };
+    fetchData();
+  }, [id]);
+
+  if (loading) {
+    return (
+      <>
+        <Header />
+        <main className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <div className="text-center py-20 px-4">
+            <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-gray-500">جاري تحميل الدورة...</p>
+          </div>
+        </main>
+        <Footer />
+      </>
+    );
+  }
 
   if (!course) {
     return (
@@ -38,6 +78,7 @@ export default function CourseDetailPage({ params }) {
 
   const levelColor = getLevelColor(course.level);
   const hoursTotal = Math.round((course.duration_minutes || 0) / 60);
+  const categoryName = course.categories?.name;
 
   const WHAT_YOU_LEARN = [
     'فهم المفاهيم الأساسية وتطبيقها عملياً',
@@ -62,16 +103,16 @@ export default function CourseDetailPage({ params }) {
                 <div className="flex items-center gap-2 text-sm text-indigo-300 mb-6">
                   <Link href="/courses" className="hover:text-white transition-colors">الدورات</Link>
                   <span>/</span>
-                  {category && <span>{category.label}</span>}
+                  {categoryName && <span>{categoryName}</span>}
                   <span>/</span>
                   <span className="text-white truncate max-w-xs">{course.title}</span>
                 </div>
 
                 {/* Badges */}
                 <div className="flex flex-wrap items-center gap-2 mb-4">
-                  {category && (
+                  {categoryName && (
                     <span className="px-3 py-1 bg-white/10 border border-white/20 rounded-full text-xs font-bold">
-                      {category.icon} {category.label}
+                      {categoryName}
                     </span>
                   )}
                   <span className={`px-3 py-1 rounded-full text-xs font-bold bg-white/10 border border-white/20`}>
@@ -107,12 +148,12 @@ export default function CourseDetailPage({ params }) {
                 <div className="flex items-center gap-3 mt-6 pt-6 border-t border-white/10">
                   <div className="w-10 h-10 bg-indigo-400 rounded-full flex items-center justify-center flex-shrink-0">
                     <span className="font-bold text-white">
-                      {(course.profiles?.full_name || 'م').charAt(0)}
+                      {(course.users?.full_name || 'م').charAt(0)}
                     </span>
                   </div>
                   <div>
                     <p className="text-xs text-indigo-300">المدرب</p>
-                    <p className="font-bold text-white">{course.profiles?.full_name || 'معلم غير محدد'}</p>
+                    <p className="font-bold text-white">{course.users?.full_name || 'معلم غير محدد'}</p>
                   </div>
                 </div>
               </div>
@@ -125,7 +166,7 @@ export default function CourseDetailPage({ params }) {
                     {course.thumbnail_url ? (
                       <img src={course.thumbnail_url} alt={course.title} className="w-full h-full object-cover" />
                     ) : (
-                      <span className="text-7xl opacity-40">{category?.icon || '📚'}</span>
+                      <span className="text-7xl opacity-40">📚</span>
                     )}
                   </div>
 
@@ -138,11 +179,13 @@ export default function CourseDetailPage({ params }) {
                   </div>
 
                   {isAuthenticated ? (
-                    <Button fullWidth size="lg" leftIcon={<Play size={18} />}>
-                      ابدأ التعلم الآن
-                    </Button>
+                    <Link href={`/checkout/${id}`}>
+                      <Button fullWidth size="lg" leftIcon={<Play size={18} />}>
+                        {course.price === 0 ? 'التسجيل مجاناً' : 'اشترك الآن'}
+                      </Button>
+                    </Link>
                   ) : (
-                    <Link href="/register">
+                    <Link href={`/login?redirect=/courses/${id}`}>
                       <Button fullWidth size="lg" leftIcon={<Play size={18} />}>
                         {course.price === 0 ? 'التسجيل مجاناً' : 'اشترك الآن'}
                       </Button>
@@ -193,6 +236,39 @@ export default function CourseDetailPage({ params }) {
           </div>
         </section>
 
+        {/* Reviews Section */}
+        {reviews.length > 0 && (
+          <section className="py-12 bg-white border-b border-gray-100">
+            <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+              <h2 className="text-2xl font-black text-gray-900 mb-6">
+                تقييمات الطلاب ({reviews.length})
+              </h2>
+              <div className="space-y-4">
+                {reviews.slice(0, 5).map((review) => (
+                  <div key={review.id} className="flex gap-4 p-4 bg-gray-50 rounded-xl">
+                    <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center flex-shrink-0">
+                      <span className="text-sm font-bold text-indigo-600">
+                        {(review.users?.full_name || 'م').charAt(0)}
+                      </span>
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-semibold text-gray-900 text-sm">{review.users?.full_name}</span>
+                        <div className="flex">
+                          {[1, 2, 3, 4, 5].map((s) => (
+                            <Star key={s} size={12} className={s <= review.rating ? 'text-amber-400 fill-amber-400' : 'text-gray-300'} />
+                          ))}
+                        </div>
+                      </div>
+                      <p className="text-sm text-gray-600">{review.comment}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+
         {/* Mobile CTA */}
         <div className="lg:hidden fixed bottom-0 inset-x-0 bg-white border-t border-gray-200 p-4 z-30">
           <div className="flex items-center justify-between max-w-lg mx-auto gap-4">
@@ -200,9 +276,13 @@ export default function CourseDetailPage({ params }) {
               {course.price === 0 ? <span className="text-emerald-600">مجاني</span> : formatPrice(course.price)}
             </div>
             {isAuthenticated ? (
-              <Button size="lg" leftIcon={<Play size={18} />}>ابدأ التعلم</Button>
+              <Link href={`/checkout/${id}`}>
+                <Button size="lg" leftIcon={<Play size={18} />}>
+                  {course.price === 0 ? 'التسجيل مجاناً' : 'اشترك الآن'}
+                </Button>
+              </Link>
             ) : (
-              <Link href="/register">
+              <Link href={`/login?redirect=/courses/${id}`}>
                 <Button size="lg" leftIcon={<Play size={18} />}>
                   {course.price === 0 ? 'التسجيل مجاناً' : 'اشترك الآن'}
                 </Button>
