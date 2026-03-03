@@ -29,9 +29,8 @@ export async function proxy(request) {
 
   const { data: { user } } = await supabase.auth.getUser();
 
-  // Protected routes
-  const protectedRoutes = ['/student', '/teacher', '/admin'];
-  const authRoutes = ['/login', '/register', '/forgot-password'];
+  const protectedRoutes = ['/student', '/teacher', '/admin', '/learn'];
+  const authRoutes = ['/login', '/register', '/forgot-password', '/reset-password'];
 
   const isProtectedRoute = protectedRoutes.some((route) => pathname.startsWith(route));
   const isAuthRoute = authRoutes.some((route) => pathname.startsWith(route));
@@ -42,8 +41,30 @@ export async function proxy(request) {
     return NextResponse.redirect(loginUrl);
   }
 
-  if (isAuthRoute && user) {
-    return NextResponse.redirect(new URL('/student/dashboard', request.url));
+  if (user) {
+    const { data: profile } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    const role = profile?.role ?? 'student';
+
+    if (pathname.startsWith('/admin') && role !== 'admin') {
+      return NextResponse.redirect(new URL(`/${role}/dashboard`, request.url));
+    }
+    if (pathname.startsWith('/teacher') && role !== 'teacher') {
+      return NextResponse.redirect(new URL(`/${role}/dashboard`, request.url));
+    }
+    if (pathname.startsWith('/student') && role !== 'student') {
+      return NextResponse.redirect(new URL(`/${role}/dashboard`, request.url));
+    }
+
+    if (isAuthRoute) {
+      if (role === 'admin') return NextResponse.redirect(new URL('/admin/dashboard', request.url));
+      if (role === 'teacher') return NextResponse.redirect(new URL('/teacher/dashboard', request.url));
+      return NextResponse.redirect(new URL('/student/dashboard', request.url));
+    }
   }
 
   return supabaseResponse;
