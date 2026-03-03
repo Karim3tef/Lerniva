@@ -1,26 +1,41 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { BookOpen, Menu, Play, Star, Clock, ChevronLeft } from 'lucide-react';
+import { BookOpen, Menu, Loader2 } from 'lucide-react';
 import Sidebar from '@/components/layout/Sidebar';
 import { STUDENT_NAVIGATION } from '@/constants';
-import { MOCK_COURSES } from '@/constants';
-import { formatDuration, getLevelLabel, getLevelColor } from '@/lib/helpers';
-
-const MY_ENROLLED = MOCK_COURSES.map((c, i) => ({
-  ...c,
-  progress: [65, 30, 90, 15, 100, 45][i] || 0,
-  lastLesson: ['مقدمة في Python', 'التكامل المحدد', 'شبكات عصبية', 'معادلات شرودنغر', 'تحليل البيانات', 'أنظمة التحكم'][i],
-}));
+import { getLevelLabel, getLevelColor } from '@/lib/helpers';
+import { createClient } from '@/lib/supabase';
 
 export default function MyCoursesPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [filter, setFilter] = useState('all');
+  const [enrollments, setEnrollments] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const filtered = MY_ENROLLED.filter((c) => {
-    if (filter === 'in-progress') return c.progress > 0 && c.progress < 100;
-    if (filter === 'completed') return c.progress === 100;
+  useEffect(() => {
+    const fetchEnrollments = async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setLoading(false); return; }
+
+      const { data } = await supabase
+        .from('enrollments')
+        .select('*, courses(id, title, thumbnail_url, price, level, total_lessons, total_duration, users(full_name))')
+        .eq('student_id', user.id)
+        .order('purchased_at', { ascending: false });
+
+      setEnrollments(data || []);
+      setLoading(false);
+    };
+    fetchEnrollments();
+  }, []);
+
+  const filtered = enrollments.filter((e) => {
+    const progress = e.progress || 0;
+    if (filter === 'in-progress') return progress > 0 && progress < 100;
+    if (filter === 'completed') return progress === 100;
     return true;
   });
 
@@ -34,7 +49,7 @@ export default function MyCoursesPage() {
           </button>
           <div>
             <h1 className="text-lg font-black text-gray-900">دوراتي</h1>
-            <p className="text-xs text-gray-500">{MY_ENROLLED.length} دورة مسجلة</p>
+            <p className="text-xs text-gray-500">{enrollments.length} دورة مسجلة</p>
           </div>
         </header>
 
@@ -58,52 +73,79 @@ export default function MyCoursesPage() {
             ))}
           </div>
 
-          {/* Courses */}
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-            {filtered.map((course) => (
-              <div key={course.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
-                <div className="h-36 bg-gradient-to-br from-indigo-500 to-purple-600 relative flex items-center justify-center">
-                  <span className="text-5xl opacity-40 select-none">📚</span>
-                  {course.progress === 100 && (
-                    <div className="absolute top-3 right-3 bg-emerald-500 text-white text-xs font-bold px-3 py-1 rounded-full">
-                      مكتملة ✓
+          {loading ? (
+            <div className="flex items-center justify-center py-24">
+              <Loader2 size={32} className="animate-spin text-indigo-600" />
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="text-center py-24">
+              <p className="text-gray-400 text-sm">لا توجد دورات في هذه الفئة</p>
+              <Link href="/courses">
+                <button className="mt-4 px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 transition-colors">
+                  استكشف الدورات
+                </button>
+              </Link>
+            </div>
+          ) : (
+            /* Courses */
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+              {filtered.map((enrollment) => {
+                const course = enrollment.courses || {};
+                const progress = enrollment.progress || 0;
+                return (
+                  <div key={enrollment.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
+                    <div className="h-36 bg-gradient-to-br from-indigo-500 to-purple-600 relative flex items-center justify-center">
+                      {course.thumbnail_url ? (
+                        <img src={course.thumbnail_url} alt={course.title} className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-5xl opacity-40 select-none">📚</span>
+                      )}
+                      {progress === 100 && (
+                        <div className="absolute top-3 right-3 bg-emerald-500 text-white text-xs font-bold px-3 py-1 rounded-full">
+                          مكتملة ✓
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-                <div className="p-5">
-                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${getLevelColor(course.level)}`}>
-                    {getLevelLabel(course.level)}
-                  </span>
-                  <h3 className="font-bold text-gray-900 text-sm mt-2 mb-1 line-clamp-2">{course.title}</h3>
-                  <p className="text-xs text-gray-400 mb-3">آخر درس: {course.lastLesson}</p>
+                    <div className="p-5">
+                      {course.level && (
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${getLevelColor(course.level)}`}>
+                          {getLevelLabel(course.level)}
+                        </span>
+                      )}
+                      <h3 className="font-bold text-gray-900 text-sm mt-2 mb-1 line-clamp-2">{course.title || '—'}</h3>
+                      <p className="text-xs text-gray-400 mb-3">
+                        {course.users?.full_name ? `المعلم: ${course.users.full_name}` : ''}
+                      </p>
 
-                  {/* Progress */}
-                  <div className="mb-4">
-                    <div className="flex justify-between text-xs text-gray-500 mb-1">
-                      <span>التقدم</span>
-                      <span className="font-bold text-gray-700">{course.progress}%</span>
-                    </div>
-                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all ${course.progress === 100 ? 'bg-emerald-500' : 'bg-indigo-600'}`}
-                        style={{ width: `${course.progress}%` }}
-                      />
+                      {/* Progress */}
+                      <div className="mb-4">
+                        <div className="flex justify-between text-xs text-gray-500 mb-1">
+                          <span>التقدم</span>
+                          <span className="font-bold text-gray-700">{progress}%</span>
+                        </div>
+                        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${progress === 100 ? 'bg-emerald-500' : 'bg-indigo-600'}`}
+                            style={{ width: `${progress}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <Link href={`/learn/${enrollment.course_id}`}>
+                        <button className={`w-full py-2.5 rounded-xl text-sm font-bold transition-colors ${
+                          progress === 100
+                            ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                            : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                        }`}>
+                          {progress === 100 ? 'مراجعة الدورة' : 'متابعة التعلم'}
+                        </button>
+                      </Link>
                     </div>
                   </div>
-
-                  <Link href={`/courses/${course.id}`}>
-                    <button className={`w-full py-2.5 rounded-xl text-sm font-bold transition-colors ${
-                      course.progress === 100
-                        ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                        : 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                    }`}>
-                      {course.progress === 100 ? 'مراجعة الدورة' : 'متابعة التعلم'}
-                    </button>
-                  </Link>
-                </div>
-              </div>
-            ))}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </main>
       </div>
     </div>
