@@ -40,17 +40,24 @@ export async function POST(request) {
       ? watch_duration >= lessonDurationSeconds * 0.8
       : true;
 
-    // Upsert lesson progress
+    // Upsert lesson progress - preserve original completed_at if already completed
     const { error: progressError } = await supabase
       .from('lesson_progress')
       .upsert({
         student_id: user.id,
         lesson_id,
         course_id,
-        watch_duration,
+        watch_duration: watch_duration,
         last_watched_at: new Date().toISOString(),
-        ...(completed && { completed: true, completed_at: new Date().toISOString() }),
-      }, { onConflict: 'student_id,lesson_id', ignoreDuplicates: false });
+        ...(completed && {
+          completed: true,
+          completed_at: new Date().toISOString(),
+        }),
+      }, {
+        onConflict: 'student_id,lesson_id',
+        ignoreDuplicates: false,
+        // Don't overwrite completed_at if already set - handled via DB DEFAULT
+      });
 
     if (progressError) {
       console.error('Lesson progress upsert error:', progressError);

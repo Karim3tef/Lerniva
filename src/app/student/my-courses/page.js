@@ -74,7 +74,7 @@ export default function MyCoursesPage() {
     const matchFilter =
       filter === 'all' ? true :
       filter === 'in-progress' ? progress > 0 && progress < 100 :
-      filter === 'completed' ? progress >= 100 : true;
+      filter === 'completed' ? progress === 100 : true;
     const matchSearch = !search ||
       (e.courses?.title || '').includes(search) ||
       (e.courses?.users?.full_name || '').includes(search);
@@ -153,7 +153,7 @@ export default function MyCoursesPage() {
                       ) : (
                         <span className="text-5xl opacity-40 select-none">📚</span>
                       )}
-                      {progress >= 100 && (
+                      {progress === 100 && (
                         <div className="absolute top-3 right-3 bg-emerald-500 text-white text-xs font-bold px-3 py-1 rounded-full">
                           مكتملة ✓
                         </div>

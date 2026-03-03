@@ -6,6 +6,7 @@ import { Menu, PlusCircle, ChevronLeft, Loader2 } from 'lucide-react';
 import Sidebar from '@/components/layout/Sidebar';
 import StatsCard from '@/components/dashboard/StatsCard';
 import RevenueChart from '@/components/dashboard/RevenueChart';
+import NotificationBell from '@/components/notifications/NotificationBell';
 import { TEACHER_NAVIGATION } from '@/constants';
 import { getStatusLabel, getStatusColor, formatPrice } from '@/lib/helpers';
 import { createClient } from '@/lib/supabase';
@@ -15,6 +16,8 @@ export default function TeacherDashboardPage() {
   const [courses, setCourses] = useState([]);
   const [totalStudents, setTotalStudents] = useState(0);
   const [totalRevenue, setTotalRevenue] = useState(0);
+  const [avgRating, setAvgRating] = useState(null);
+  const [userId, setUserId] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -22,6 +25,7 @@ export default function TeacherDashboardPage() {
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setLoading(false); return; }
+      setUserId(user.id);
 
       const { data: coursesData } = await supabase
         .from('courses')
@@ -34,7 +38,7 @@ export default function TeacherDashboardPage() {
       const courseIds = courseList.map((c) => c.id);
 
       if (courseIds.length > 0) {
-        const [{ count }, { data: payments }] = await Promise.all([
+        const [{ count }, { data: payments }, { data: reviews }] = await Promise.all([
           supabase
             .from('enrollments')
             .select('*', { count: 'exact', head: true })
@@ -44,10 +48,18 @@ export default function TeacherDashboardPage() {
             .select('amount')
             .in('course_id', courseIds)
             .eq('status', 'succeeded'),
+          supabase
+            .from('reviews')
+            .select('rating')
+            .in('course_id', courseIds),
         ]);
 
         setTotalStudents(count || 0);
         setTotalRevenue((payments || []).reduce((sum, p) => sum + Number(p.amount), 0));
+        if (reviews && reviews.length > 0) {
+          const avg = reviews.reduce((s, r) => s + r.rating, 0) / reviews.length;
+          setAvgRating(avg.toFixed(1));
+        }
       }
 
       setLoading(false);
@@ -78,12 +90,15 @@ export default function TeacherDashboardPage() {
               <p className="text-xs text-gray-500">إدارة دوراتك ومتابعة أدائك</p>
             </div>
           </div>
-          <Link href="/teacher/create-course">
-            <button className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors">
-              <PlusCircle size={16} />
-              <span className="hidden sm:inline">دورة جديدة</span>
-            </button>
-          </Link>
+          <div className="flex items-center gap-3">
+            {userId && <NotificationBell userId={userId} />}
+            <Link href="/teacher/create-course">
+              <button className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors">
+                <PlusCircle size={16} />
+                <span className="hidden sm:inline">دورة جديدة</span>
+              </button>
+            </Link>
+          </div>
         </header>
 
         <main className="p-6">
@@ -116,7 +131,7 @@ export default function TeacherDashboardPage() {
                   color="amber"
                   subtitle={`${publishedCount} منشورة، ${draftCount} مسودة`}
                 />
-                <StatsCard title="متوسط التقييم" value="—" icon="Star" color="purple" subtitle="من 5 نجوم" />
+                <StatsCard title="متوسط التقييم" value={avgRating ?? '—'} icon="Star" color="purple" subtitle="من 5 نجوم" />
               </div>
 
               {/* Revenue Chart */}

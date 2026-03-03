@@ -6,7 +6,6 @@ import MuxPlayerClient from './MuxPlayerClient';
 
 export default function LessonProgressClient({ playbackId, lessonTitle, courseId, lessonId, lessons }) {
   const router = useRouter();
-  const watchStartRef = useRef(Date.now());
   const watchedSecondsRef = useRef(0);
 
   const reportProgress = useCallback(async (watchDuration) => {

@@ -22,6 +22,9 @@ export default function AdminDashboardClient({
   totalRevenue,
   recentUsers,
   pendingCount,
+  pendingWithdrawals = 0,
+  pendingRefunds = 0,
+  newUsersThisWeek = 0,
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -48,10 +51,10 @@ export default function AdminDashboardClient({
         <main className="p-6">
           {/* Stats */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <StatsCard title="إجمالي المستخدمين" value={formatNumber(userCount)} icon="Users" color="indigo" trend="up" trendValue="" subtitle="" />
-            <StatsCard title="الدورات النشطة" value={formatNumber(courseCount)} icon="BookOpen" color="emerald" trend="up" trendValue="" subtitle="" />
+            <StatsCard title="إجمالي المستخدمين" value={formatNumber(userCount)} icon="Users" color="indigo" trend="up" trendValue="" subtitle={`+${newUsersThisWeek} هذا الأسبوع`} />
+            <StatsCard title="الدورات النشطة" value={formatNumber(courseCount)} icon="BookOpen" color="emerald" trend="up" trendValue="" subtitle={pendingCount > 0 ? `${pendingCount} تنتظر المراجعة` : ''} />
             <StatsCard title="إجمالي الإيرادات" value={formatPrice(totalRevenue)} icon="DollarSign" color="amber" trend="up" trendValue="" subtitle="" />
-            <StatsCard title="معدل الرضا" value="98%" icon="Heart" color="purple" subtitle="من الطلاب" />
+            <StatsCard title="طلبات معلقة" value={String(pendingWithdrawals + pendingRefunds)} icon="AlertCircle" color="purple" subtitle={`${pendingWithdrawals} سحب · ${pendingRefunds} استرداد`} />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
