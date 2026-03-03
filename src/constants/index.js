@@ -45,22 +45,22 @@ export const NAVIGATION = [
 ];
 
 export const STUDENT_NAVIGATION = [
-  { href: '/dashboard', label: 'لوحة التحكم', icon: 'LayoutDashboard' },
-  { href: '/my-courses', label: 'دوراتي', icon: 'BookOpen' },
+  { href: '/student/dashboard', label: 'لوحة التحكم', icon: 'LayoutDashboard' },
+  { href: '/student/my-courses', label: 'دوراتي', icon: 'BookOpen' },
 ];
 
 export const TEACHER_NAVIGATION = [
-  { href: '/dashboard', label: 'لوحة التحكم', icon: 'LayoutDashboard' },
-  { href: '/courses', label: 'دوراتي', icon: 'BookOpen' },
-  { href: '/create-course', label: 'إضافة دورة', icon: 'PlusCircle' },
-  { href: '/analytics', label: 'التحليلات', icon: 'BarChart2' },
+  { href: '/teacher/dashboard', label: 'لوحة التحكم', icon: 'LayoutDashboard' },
+  { href: '/teacher/courses', label: 'دوراتي', icon: 'BookOpen' },
+  { href: '/teacher/create-course', label: 'إضافة دورة', icon: 'PlusCircle' },
+  { href: '/teacher/analytics', label: 'التحليلات', icon: 'BarChart2' },
 ];
 
 export const ADMIN_NAVIGATION = [
-  { href: '/dashboard', label: 'لوحة التحكم', icon: 'LayoutDashboard' },
-  { href: '/users', label: 'المستخدمون', icon: 'Users' },
-  { href: '/courses', label: 'الدورات', icon: 'BookOpen' },
-  { href: '/refunds', label: 'المبالغ المستردة', icon: 'RefreshCw' },
+  { href: '/admin/dashboard', label: 'لوحة التحكم', icon: 'LayoutDashboard' },
+  { href: '/admin/users', label: 'المستخدمون', icon: 'Users' },
+  { href: '/admin/courses', label: 'الدورات', icon: 'BookOpen' },
+  { href: '/admin/refunds', label: 'المبالغ المستردة', icon: 'RefreshCw' },
 ];
 
 export const STATS = [
