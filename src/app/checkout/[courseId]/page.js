@@ -52,7 +52,8 @@ export default function CheckoutPage({ params }) {
       if (data.url) {
         window.location.href = data.url;
       }
-    } catch {
+    } catch (err) {
+      console.error('Enrollment error:', err);
       setError('حدث خطأ. حاول مجدداً.');
     } finally {
       setEnrolling(false);
