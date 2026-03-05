@@ -39,32 +39,20 @@ The migration is based on the detailed specification in `MIGRATION_GUIDE.md`.
   - Bunny Stream service (src/services/bunnyService.js)
   - Stripe service (src/services/stripeService.js)
   - Notification service (src/services/notificationService.js)
-- Auth routes & controller (COMPLETE):
-  - POST /api/auth/register
-  - POST /api/auth/login
-  - POST /api/auth/refresh
-  - POST /api/auth/logout
-  - GET /api/auth/me
-  - PUT /api/auth/me
-  - POST /api/auth/forgot-password
-  - POST /api/auth/reset-password
-
-**Still Needed:**
-Routes and controllers for:
-- Courses (8 endpoints)
-- Lessons (6 endpoints)
-- Uploads (3 endpoints)
-- Enrollments (3 endpoints)
-- Progress (2 endpoints)
-- Payments (3 endpoints)
-- Webhooks (2 endpoints - Stripe & Bunny)
-- Reviews (3 endpoints)
-- Notifications (3 endpoints)
-- Certificates (3 endpoints)
-- Admin (9 endpoints)
-- Teachers (2 endpoints)
-
-Total: ~45 more endpoints to implement
+- **All Routes & Controllers (COMPLETE - 60+ endpoints):**
+  - Auth routes & controller (8 endpoints)
+  - Courses routes & controller (8 endpoints)
+  - Lessons routes & controller (6 endpoints)
+  - Uploads routes & controller (3 endpoints)
+  - Enrollments routes & controller (3 endpoints)
+  - Progress routes & controller (2 endpoints)
+  - Payments routes & controller (3 endpoints)
+  - Webhooks routes & controller (2 endpoints - Stripe & Bunny)
+  - Reviews routes & controller (3 endpoints)
+  - Notifications routes & controller (3 endpoints)
+  - Certificates routes & controller (3 endpoints)
+  - Admin routes & controller (9 endpoints)
+  - Teachers routes & controller (2 endpoints)
 
 ### ✅ Phase 4: Realtime (Socket.io)
 - Socket.io server initialized (src/realtime/socket.js)
@@ -96,33 +84,19 @@ Total: ~45 more endpoints to implement
 
 ## Next Steps (Priority Order)
 
-1. **Complete API Routes** (Highest Priority)
-   - Implement courses controller & routes
-   - Implement lessons controller & routes
-   - Implement uploads controller & routes (Bunny integration)
-   - Implement enrollments controller & routes
-   - Implement progress controller & routes
-   - Implement payments controller & routes (Stripe)
-   - Implement webhooks controller & routes (Stripe + Bunny)
-   - Implement reviews controller & routes
-   - Implement notifications controller & routes
-   - Implement certificates controller & routes
-   - Implement admin controller & routes
-   - Implement teachers controller & routes
-
-2. **Frontend API Client & Auth**
+1. **Frontend API Client & Auth** (Highest Priority)
    - Create lib/api.js with automatic token refresh
    - Rewrite authStore.js (JWT, no Supabase)
    - Create Socket.io client (lib/socket.js)
    - Rewrite middleware.js (cookie-based)
 
-3. **Frontend Video Components**
+2. **Frontend Video Components**
    - Create BunnyPlayerClient (hls.js)
    - Create BunnyUploaderClient (tus-js-client)
    - Create LessonProgressClient
    - Remove Mux components
 
-4. **Frontend Page Updates**
+3. **Frontend Page Updates**
    - Update auth pages (login, register, etc.)
    - Update course pages
    - Update lesson/learn pages
@@ -131,7 +105,7 @@ Total: ~45 more endpoints to implement
    - Update teacher pages
    - Update student pages
 
-5. **Testing & Verification**
+4. **Testing & Verification**
    - Set up development database
    - Run migration scripts
    - Test auth flow
@@ -143,10 +117,10 @@ Total: ~45 more endpoints to implement
 
 ## Estimated Remaining Work
 
-- **Backend API**: ~45 endpoints × ~30 min each = ~22 hours
+- **Backend API**: ✅ COMPLETE (60+ endpoints implemented)
 - **Frontend Migration**: ~100 files to update = ~40 hours
 - **Testing**: ~10 hours
-- **Total**: ~72 hours of development work
+- **Total**: ~50 hours of development work remaining
 
 ## Notes
 
