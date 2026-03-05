@@ -35,7 +35,7 @@ export default function BunnyUploaderClient({ lessonId, onUploadComplete }) {
       });
       upload.start();
     } catch (err) {
-      setError('فشل الحصول على رابط الرفع.');
+      setError(err?.message || 'فشل الحصول على رابط الرفع.');
       setUploading(false);
     }
   };

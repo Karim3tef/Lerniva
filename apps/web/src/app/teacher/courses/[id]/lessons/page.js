@@ -63,7 +63,7 @@ export default function TeacherLessonsPage({ params }) {
 
       if (newLesson?.error) throw new Error(newLesson.error);
 
-      if (addForm.lesson_type === 'video') {
+      if (addForm.lesson_type === 'video' && newLesson?.id) {
         setActiveUploadLessonId(newLesson.id);
       }
 

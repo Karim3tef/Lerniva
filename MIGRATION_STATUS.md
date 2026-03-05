@@ -61,19 +61,22 @@ The migration is based on the detailed specification in `MIGRATION_GUIDE.md`.
 - User-specific rooms for targeted notifications
 - Notification and enrollment update channels
 
-### ⏳ Phase 5: Frontend Migration
-**Not Started - Major Work Required:**
-- Create API client (lib/api.js)
-- Rewrite auth store (remove Supabase)
-- Rewrite middleware (cookie-based JWT)
-- Create Socket.io client
-- Replace all Supabase calls (~100+ files)
-- Create Bunny video components:
-  - BunnyPlayerClient
-  - BunnyUploaderClient
-  - LessonProgressClient
-- Update all pages
-- Update all hooks
+### ✅ Phase 5: Frontend Migration
+**Completed:**
+- API client created (lib/api.js) with JWT auth + auto-refresh on 401
+- Socket.io client created (lib/socket.js)
+- Auth store rewritten (JWT-based, no Supabase)
+- Middleware rewritten (cookie-based JWT — both proxy.js and middleware.js)
+- Bunny video components created:
+  - BunnyPlayerClient (hls.js HLS playback)
+  - BunnyUploaderClient (tus-js-client TUS upload)
+  - LessonProgressClient (uses Express API + auto-advance)
+- All hooks rewritten (useAuth, useCourses, useEnrollments, useNotifications)
+- All form components updated (LoginForm, RegisterForm, CreateCourseForm, TeacherCourseEditForm)
+- All page files updated (admin, teacher, student, learn, checkout, public, auth, certificates, profile)
+- All Supabase lib files removed (supabase.js, supabase-server.js, supabase-admin.js, notifications.js)
+- All Mux files removed (mux.js, MuxPlayerClient.js, MuxUploaderClient.js)
+- Old Next.js API routes removed (now handled by Express backend)
 
 ### ✅ Phase 6: Environment & Dependencies
 - Backend package.json created with all dependencies
@@ -84,43 +87,22 @@ The migration is based on the detailed specification in `MIGRATION_GUIDE.md`.
 
 ## Next Steps (Priority Order)
 
-1. **Frontend API Client & Auth** (Highest Priority)
-   - Create lib/api.js with automatic token refresh
-   - Rewrite authStore.js (JWT, no Supabase)
-   - Create Socket.io client (lib/socket.js)
-   - Rewrite middleware.js (cookie-based)
-
-2. **Frontend Video Components**
-   - Create BunnyPlayerClient (hls.js)
-   - Create BunnyUploaderClient (tus-js-client)
-   - Create LessonProgressClient
-   - Remove Mux components
-
-3. **Frontend Page Updates**
-   - Update auth pages (login, register, etc.)
-   - Update course pages
-   - Update lesson/learn pages
-   - Update dashboard pages
-   - Update admin pages
-   - Update teacher pages
-   - Update student pages
-
-4. **Testing & Verification**
+1. **Testing & Verification** (Highest Priority)
    - Set up development database
    - Run migration scripts
-   - Test auth flow
-   - Test course management
-   - Test video upload/playback
-   - Test payment flow
-   - Test realtime notifications
-   - Test all user roles
+   - Test auth flow (login/register/logout/reset-password)
+   - Test course browsing & enrollment
+   - Test video upload/playback (Bunny Stream)
+   - Test payment flow (Stripe)
+   - Test realtime notifications (Socket.io)
+   - Test all user roles (admin/teacher/student)
 
 ## Estimated Remaining Work
 
 - **Backend API**: ✅ COMPLETE (60+ endpoints implemented)
-- **Frontend Migration**: ~100 files to update = ~40 hours
+- **Frontend Migration**: ✅ COMPLETE (all Supabase/Mux removed, API client integrated)
 - **Testing**: ~10 hours
-- **Total**: ~50 hours of development work remaining
+- **Total**: ~10 hours of testing remaining
 
 ## Notes
 

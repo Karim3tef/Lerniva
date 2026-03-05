@@ -14,7 +14,7 @@ export function useNotifications() {
 
     api.get('/notifications').then((data) => {
       setNotifications(data || []);
-      setUnreadCount((data || []).filter((n) => !n.is_read).length || 0);
+      setUnreadCount((data || []).filter((n) => !n.is_read).length);
     }).catch(() => {});
 
     const socket = connectSocket();
