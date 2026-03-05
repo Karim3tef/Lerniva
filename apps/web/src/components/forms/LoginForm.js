@@ -9,9 +9,7 @@ import { Mail, Lock, ArrowLeft } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import { loginSchema } from '@/lib/validations';
-import { signIn } from '@/lib/auth';
 import useAuthStore from '@/store/authStore';
-import { supabase } from '@/lib/supabase';
 
 export default function LoginForm() {
   const router = useRouter();
@@ -25,20 +23,12 @@ export default function LoginForm() {
   const onSubmit = async (data) => {
     setServerError('');
     try {
-      const { user, session } = await signIn(data.email, data.password);
-      const { data: profile } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', user.id)
-        .single();
-
-      login(user, profile);
-
-      const role = profile?.role || user.user_metadata?.role || 'student';
+      const user = await login(data.email, data.password);
+      const role = user?.role || 'student';
       if (role === 'admin') router.push('/admin/dashboard');
       else if (role === 'teacher') router.push('/teacher/dashboard');
       else router.push('/student/dashboard');
-    } catch (err) {
+    } catch {
       setServerError('البريد الإلكتروني أو كلمة المرور غير صحيحة');
     }
   };

@@ -7,7 +7,7 @@ import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import Button from '@/components/ui/Button';
 import useAuthStore from '@/store/authStore';
-import { createClient } from '@/lib/supabase';
+import { api } from '@/lib/api';
 
 export default function ProfilePage() {
   const { isAuthenticated, user, profile, getRole } = useAuthStore();
@@ -32,12 +32,8 @@ export default function ProfilePage() {
     setSaveSuccess('');
     setSaveError('');
     try {
-      const supabase = createClient();
-      const { error } = await supabase
-        .from('users')
-        .update({ full_name: fullName, bio })
-        .eq('id', user.id);
-      if (error) throw error;
+      const result = await api.put('/auth/me', { full_name: fullName, bio });
+      if (result?.error) throw new Error(result.error);
       setSaveSuccess('تم حفظ التغييرات بنجاح');
     } catch (err) {
       setSaveError(err.message || 'حدث خطأ في الحفظ');

@@ -8,7 +8,7 @@ import StatsCard from '@/components/dashboard/StatsCard';
 import CourseCard from '@/components/course/CourseCard';
 import NotificationBell from '@/components/notifications/NotificationBell';
 import { STUDENT_NAVIGATION } from '@/constants';
-import { createClient } from '@/lib/supabase';
+import { api } from '@/lib/api';
 
 const EMOJIS = ['💻', '📐', '🤖', '⚛️', '📊', '⚙️', '🧪', '🧬'];
 
@@ -19,67 +19,27 @@ export default function StudentDashboardPage() {
   const [completedLessons, setCompletedLessons] = useState(0);
   const [learnHours, setLearnHours] = useState(0);
   const [recommendations, setRecommendations] = useState([]);
-  const [userId, setUserId] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { setLoading(false); return; }
-      setUserId(user.id);
+      try {
+        const [enrollData, statsData, recData] = await Promise.all([
+          api.get('/enrollments/mine'),
+          api.get('/progress/stats'),
+          api.get('/courses?limit=4'),
+        ]);
 
-      const [
-        { data: enrollData },
-        { count: certCountData },
-        { count: completedCount },
-        { data: watchData },
-      ] = await Promise.all([
-        supabase
-          .from('enrollments')
-          .select('*, courses(id, title, thumbnail_url, total_duration, total_lessons, users(full_name))')
-          .eq('student_id', user.id)
-          .order('purchased_at', { ascending: false }),
-        supabase
-          .from('certificates')
-          .select('*', { count: 'exact', head: true })
-          .eq('student_id', user.id),
-        supabase
-          .from('lesson_progress')
-          .select('*', { count: 'exact', head: true })
-          .eq('student_id', user.id)
-          .eq('completed', true),
-        supabase
-          .from('lesson_progress')
-          .select('watch_duration')
-          .eq('student_id', user.id),
-      ]);
-
-      setEnrollments(enrollData || []);
-      setCertCount(certCountData || 0);
-      setCompletedLessons(completedCount || 0);
-
-      const totalSeconds = (watchData || []).reduce((sum, r) => sum + (r.watch_duration || 0), 0);
-      setLearnHours(Math.round(totalSeconds / 3600));
-
-      // Fetch recommended courses (not enrolled)
-      const enrolledIds = (enrollData || []).map((e) => e.course_id);
-      let recommendQuery = supabase
-        .from('courses')
-        .select('*, users(full_name)')
-        .eq('is_published', true)
-        .eq('is_approved', true)
-        .order('created_at', { ascending: false })
-        .limit(4);
-
-      if (enrolledIds.length > 0) {
-        recommendQuery = recommendQuery.not('id', 'in', `(${enrolledIds.join(',')})`);
+        setEnrollments(enrollData || []);
+        setCertCount(statsData?.certCount || 0);
+        setCompletedLessons(statsData?.completedLessons || 0);
+        setLearnHours(statsData?.learnHours || 0);
+        setRecommendations(recData?.courses || recData || []);
+      } catch {
+        // handle error silently
+      } finally {
+        setLoading(false);
       }
-
-      const { data: recData } = await recommendQuery;
-      setRecommendations(recData || []);
-
-      setLoading(false);
     };
     fetchData();
   }, []);
@@ -89,40 +49,17 @@ export default function StudentDashboardPage() {
   useEffect(() => {
     if (enrollments.length === 0) return;
     const fetchLessonLinks = async () => {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
       const links = {};
       await Promise.all(
         enrollments.slice(0, 3).map(async (enrollment) => {
           const courseId = enrollment.course_id;
-
-          // Try to get last watched lesson
-          const { data: lastProgress } = await supabase
-            .from('lesson_progress')
-            .select('lesson_id')
-            .eq('student_id', user.id)
-            .eq('course_id', courseId)
-            .order('last_watched_at', { ascending: false })
-            .limit(1)
-            .single();
-
-          if (lastProgress?.lesson_id) {
-            links[courseId] = `/learn/${courseId}/${lastProgress.lesson_id}`;
-          } else {
-            // Fall back to first lesson
-            const { data: firstLesson } = await supabase
-              .from('lessons')
-              .select('id')
-              .eq('course_id', courseId)
-              .order('order_number', { ascending: true })
-              .limit(1)
-              .single();
-
-            links[courseId] = firstLesson?.id
-              ? `/learn/${courseId}/${firstLesson.id}`
+          try {
+            const data = await api.get(`/progress/last-lesson/${courseId}`);
+            links[courseId] = data?.lessonId
+              ? `/learn/${courseId}/${data.lessonId}`
               : null;
+          } catch {
+            links[courseId] = null;
           }
         })
       );
@@ -158,7 +95,7 @@ export default function StudentDashboardPage() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            {userId && <NotificationBell userId={userId} />}
+            <NotificationBell />
             <Link href="/courses">
               <button className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors">
                 <BookOpen size={16} />

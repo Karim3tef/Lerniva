@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Menu, Award, Download, Loader2, ExternalLink } from 'lucide-react';
 import Sidebar from '@/components/layout/Sidebar';
 import { STUDENT_NAVIGATION } from '@/constants';
-import { createClient } from '@/lib/supabase';
+import { api } from '@/lib/api';
 import { formatDate } from '@/lib/helpers';
 
 const downloadCertificate = async (cert) => {
@@ -128,16 +128,7 @@ export default function CertificatesPage() {
 
   useEffect(() => {
     const fetchCertificates = async () => {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { setLoading(false); return; }
-
-      const { data } = await supabase
-        .from('certificates')
-        .select('*, courses(id, title, users(full_name))')
-        .eq('student_id', user.id)
-        .order('issued_at', { ascending: false });
-
+      const data = await api.get('/certificates/mine');
       setCertificates(data || []);
       setLoading(false);
     };

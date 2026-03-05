@@ -9,7 +9,7 @@ import { Mail, Lock, User, GraduationCap, BookOpen, ArrowLeft, CheckCircle2 } fr
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import { registerSchema } from '@/lib/validations';
-import { signUp } from '@/lib/auth';
+import { api } from '@/lib/api';
 
 export default function RegisterForm() {
   const router = useRouter();
@@ -26,10 +26,15 @@ export default function RegisterForm() {
   const onSubmit = async (data) => {
     setServerError('');
     try {
-      await signUp(data.email, data.password, data.fullName, data.role);
+      await api.post('/auth/register', {
+        email: data.email,
+        password: data.password,
+        fullName: data.fullName,
+        role: data.role,
+      });
       setSuccess(true);
     } catch (err) {
-      if (err.message?.includes('already registered')) {
+      if (err?.message?.includes('already registered') || err?.message?.includes('already exists')) {
         setServerError('هذا البريد الإلكتروني مسجل مسبقاً');
       } else {
         setServerError('حدث خطأ أثناء إنشاء الحساب. يرجى المحاولة مرة أخرى.');

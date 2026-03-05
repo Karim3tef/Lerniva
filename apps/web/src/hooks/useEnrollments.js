@@ -1,46 +1,34 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
+import { api } from '@/lib/api';
 import useAuthStore from '@/store/authStore';
 
 export function useEnrollments() {
-  const { user } = useAuthStore();
+  const { user, isAuthenticated } = useAuthStore();
   const [enrollments, setEnrollments] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    if (user?.id) fetchEnrollments();
-  }, [user?.id]);
+    if (isAuthenticated) fetchEnrollments();
+  }, [isAuthenticated]);
 
   const fetchEnrollments = async () => {
-    if (!user?.id) return;
     setIsLoading(true);
     try {
-      const { data, error: fetchError } = await supabase
-        .from('enrollments')
-        .select('*, courses(*)')
-        .eq('student_id', user.id)
-        .order('purchased_at', { ascending: false });
-
-      if (fetchError) throw fetchError;
+      const data = await api.get('/enrollments/mine');
       setEnrollments(data || []);
     } catch (err) {
-      setError(err.message);
+      setError(err?.message || 'فشل تحميل التسجيلات');
     } finally {
       setIsLoading(false);
     }
   };
 
   const enrollInCourse = async (courseId) => {
-    if (!user?.id) throw new Error('يجب تسجيل الدخول أولاً');
-    const { data, error: enrollError } = await supabase
-      .from('enrollments')
-      .insert({ student_id: user.id, course_id: courseId })
-      .select()
-      .single();
-    if (enrollError) throw enrollError;
+    if (!isAuthenticated) throw new Error('يجب تسجيل الدخول أولاً');
+    const data = await api.post('/enrollments', { course_id: courseId });
     await fetchEnrollments();
     return data;
   };

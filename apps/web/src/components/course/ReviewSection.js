@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { Star, Loader2, Trash2 } from 'lucide-react';
-import { createClient } from '@/lib/supabase';
+import { api } from '@/lib/api';
 import { formatDate, getInitials } from '@/lib/helpers';
+import useAuthStore from '@/store/authStore';
 
 function StarRating({ value, onChange, readOnly = false }) {
   const [hovered, setHovered] = useState(0);
@@ -42,35 +43,20 @@ export default function ReviewSection({ courseId }) {
 
   useEffect(() => {
     const fetchData = async () => {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-
-      const [{ data: reviewsData }, enrollmentData] = await Promise.all([
-        supabase
-          .from('reviews')
-          .select('*, users(full_name)')
-          .eq('course_id', courseId)
-          .order('created_at', { ascending: false }),
-        user
-          ? supabase
-              .from('enrollments')
-              .select('id')
-              .eq('course_id', courseId)
-              .eq('student_id', user.id)
-              .single()
-          : Promise.resolve({ data: null }),
+      const [reviewsData, enrollmentData] = await Promise.all([
+        api.get(`/reviews/course/${courseId}`),
+        api.get(`/enrollments/check/${courseId}`).catch(() => null),
       ]);
 
-      setReviews(reviewsData || []);
-      setMyEnrollment(enrollmentData?.data || null);
+      const reviews = reviewsData || [];
+      setReviews(reviews);
+      setMyEnrollment(enrollmentData?.enrolled ? { id: courseId } : null);
 
-      if (user && reviewsData) {
-        const existing = reviewsData.find((r) => r.student_id === user.id);
-        if (existing) {
-          setMyReview(existing);
-          setRating(existing.rating);
-          setComment(existing.comment || '');
-        }
+      const existing = reviews.find((r) => r.is_mine);
+      if (existing) {
+        setMyReview(existing);
+        setRating(existing.rating);
+        setComment(existing.comment || '');
       }
 
       setLoading(false);
@@ -87,20 +73,12 @@ export default function ReviewSection({ courseId }) {
     setSubmitting(true);
     setError('');
     try {
-      const res = await fetch('/api/reviews', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ course_id: courseId, rating, comment }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || 'حدث خطأ');
+      const data = await api.post('/reviews', { course_id: courseId, rating, comment });
+      if (!data || data.error) {
+        setError(data?.error || 'حدث خطأ');
         return;
       }
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      const { data: profile } = await supabase.from('users').select('full_name').eq('id', user.id).single();
-      const newReview = { ...data.review, users: profile };
+      const newReview = data.review || data;
       if (myReview) {
         setReviews((prev) => prev.map((r) => r.id === myReview.id ? newReview : r));
       } else {
@@ -116,13 +94,11 @@ export default function ReviewSection({ courseId }) {
 
   const handleDelete = async () => {
     if (!myReview) return;
-    const res = await fetch(`/api/reviews?course_id=${courseId}`, { method: 'DELETE' });
-    if (res.ok) {
-      setReviews((prev) => prev.filter((r) => r.id !== myReview.id));
-      setMyReview(null);
-      setRating(5);
-      setComment('');
-    }
+    await api.delete(`/reviews/${courseId}`);
+    setReviews((prev) => prev.filter((r) => r.id !== myReview.id));
+    setMyReview(null);
+    setRating(5);
+    setComment('');
   };
 
   if (loading) {

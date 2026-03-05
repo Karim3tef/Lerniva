@@ -1,55 +1,62 @@
-import { redirect } from 'next/navigation';
+'use client';
+
+import { useState, useEffect, use } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { CheckCircle, Lock, ChevronLeft, BookOpen, Play } from 'lucide-react';
-import { createServerSupabaseClient } from '@/lib/supabase-server';
-import MuxPlayerClient from '@/components/video/MuxPlayerClient';
+import { CheckCircle, Lock, ChevronLeft, BookOpen, Play, Loader2 } from 'lucide-react';
+import { api } from '@/lib/api';
 import LessonProgressClient from '@/components/video/LessonProgressClient';
 
-export default async function LessonPlayerPage({ params }) {
-  const { courseId, lessonId } = await params;
-  const supabase = await createServerSupabaseClient();
+export default function LessonPlayerPage({ params }) {
+  const { courseId, lessonId } = use(params);
+  const router = useRouter();
+  const [lesson, setLesson] = useState(null);
+  const [lessons, setLessons] = useState([]);
+  const [enrollment, setEnrollment] = useState(null);
+  const [course, setCourse] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    redirect(`/login?redirect=/learn/${courseId}/${lessonId}`);
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [lessonData, lessonsData, enrollData, courseData] = await Promise.all([
+          api.get(`/lessons/${lessonId}/watch`),
+          api.get(`/lessons/course/${courseId}`),
+          api.get(`/enrollments/check/${courseId}`),
+          api.get(`/courses/${courseId}`),
+        ]);
+
+        if (!enrollData?.enrolled) {
+          router.push(`/checkout/${courseId}`);
+          return;
+        }
+        if (!lessonData || lessonData.error) {
+          router.push('/student/my-courses');
+          return;
+        }
+
+        setLesson(lessonData);
+        setLessons(lessonsData || []);
+        setEnrollment(enrollData);
+        setCourse(courseData);
+      } catch {
+        router.push('/student/my-courses');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [courseId, lessonId]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <Loader2 size={40} className="text-indigo-500 animate-spin" />
+      </div>
+    );
   }
 
-  // Verify enrollment
-  const { data: enrollment } = await supabase
-    .from('enrollments')
-    .select('id, progress')
-    .eq('student_id', user.id)
-    .eq('course_id', courseId)
-    .single();
-
-  if (!enrollment) {
-    redirect(`/checkout/${courseId}`);
-  }
-
-  // Fetch all lessons
-  const { data: lessons } = await supabase
-    .from('lessons')
-    .select('*')
-    .eq('course_id', courseId)
-    .order('order_number', { ascending: true });
-
-  // Fetch current lesson
-  const { data: lesson } = await supabase
-    .from('lessons')
-    .select('*')
-    .eq('id', lessonId)
-    .single();
-
-  if (!lesson) {
-    redirect(`/student/my-courses`);
-  }
-
-  // Fetch course title
-  const { data: course } = await supabase
-    .from('courses')
-    .select('title')
-    .eq('id', courseId)
-    .single();
+  if (!lesson) return null;
 
   return (
     <div className="min-h-screen bg-gray-900 flex" dir="rtl">
@@ -65,19 +72,19 @@ export default async function LessonPlayerPage({ params }) {
             <h1 className="text-white font-bold text-sm truncate">{lesson.title}</h1>
           </div>
           <div className="text-xs text-gray-400">
-            {Math.round(enrollment.progress || 0)}% مكتمل
+            {Math.round(enrollment?.progress || 0)}% مكتمل
           </div>
         </header>
 
         {/* Video Player */}
         <div className="flex-1 p-6">
-          {lesson.mux_playback_id ? (
+          {lesson.playback_url ? (
             <LessonProgressClient
-              playbackId={lesson.mux_playback_id}
+              playbackUrl={lesson.playback_url}
               lessonTitle={lesson.title}
               courseId={courseId}
               lessonId={lessonId}
-              lessons={lessons || []}
+              lessons={lessons}
             />
           ) : (
             <div className="w-full aspect-video bg-gray-800 rounded-xl flex items-center justify-center">
@@ -105,12 +112,12 @@ export default async function LessonPlayerPage({ params }) {
             <BookOpen size={16} />
             محتوى الدورة
           </h2>
-          <p className="text-xs text-gray-400 mt-1">{lessons?.length || 0} درس</p>
+          <p className="text-xs text-gray-400 mt-1">{lessons.length} درس</p>
         </div>
         <div className="flex-1 overflow-y-auto">
-          {(lessons || []).map((l, index) => {
+          {lessons.map((l, index) => {
             const isActive = l.id === lessonId;
-            const isCompleted = false; // TODO: track individual lesson completion
+            const isCompleted = l.completed || false;
             return (
               <Link
                 key={l.id}

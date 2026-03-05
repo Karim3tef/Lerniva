@@ -5,8 +5,8 @@ import { Menu, PlusCircle, Trash2, Video, FileText, ArrowRight, GripVertical, Ey
 import Link from 'next/link';
 import Sidebar from '@/components/layout/Sidebar';
 import { TEACHER_NAVIGATION } from '@/constants';
-import { createClient } from '@/lib/supabase';
-import MuxUploaderClient from '@/components/video/MuxUploaderClient';
+import { api } from '@/lib/api';
+import BunnyUploaderClient from '@/components/video/BunnyUploaderClient';
 
 export default function TeacherLessonsPage({ params }) {
   const { id: courseId } = use(params);
@@ -15,7 +15,7 @@ export default function TeacherLessonsPage({ params }) {
   const [course, setCourse] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [uploadUrl, setUploadUrl] = useState('');
+  const [activeUploadLessonId, setActiveUploadLessonId] = useState(null);
   const [addForm, setAddForm] = useState({
     title: '',
     lesson_type: 'video',
@@ -26,16 +26,14 @@ export default function TeacherLessonsPage({ params }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const supabase = createClient();
-
   useEffect(() => {
     fetchData();
   }, [courseId]);
 
   const fetchData = async () => {
-    const [{ data: courseData }, { data: lessonsData }] = await Promise.all([
-      supabase.from('courses').select('id, title, teacher_id').eq('id', courseId).single(),
-      supabase.from('lessons').select('*').eq('course_id', courseId).order('order_number', { ascending: true }),
+    const [courseData, lessonsData] = await Promise.all([
+      api.get(`/courses/${courseId}`),
+      api.get(`/lessons/course/${courseId}`),
     ]);
     setCourse(courseData);
     setLessons(lessonsData || []);
@@ -47,46 +45,27 @@ export default function TeacherLessonsPage({ params }) {
     setAddForm((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
   };
 
-  const getUploadUrl = async (lessonId) => {
-    const res = await fetch('/api/mux/upload', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lesson_id: lessonId, course_id: courseId }),
-    });
-    const data = await res.json();
-    if (data.upload_url) setUploadUrl(data.upload_url);
-  };
-
   const handleAddLesson = async (e) => {
     e.preventDefault();
     setSaving(true);
     setError('');
     try {
       const nextOrder = lessons.length + 1;
-      const { data: newLesson, error: insertError } = await supabase
-        .from('lessons')
-        .insert({
-          course_id: courseId,
-          title: addForm.title,
-          lesson_type: addForm.lesson_type,
-          duration: Number(addForm.duration),
-          is_preview: addForm.is_preview,
-          content: addForm.lesson_type === 'text' ? addForm.content : null,
-          order_number: nextOrder,
-        })
-        .select()
-        .single();
+      const newLesson = await api.post('/lessons', {
+        course_id: courseId,
+        title: addForm.title,
+        lesson_type: addForm.lesson_type,
+        duration: Number(addForm.duration),
+        is_preview: addForm.is_preview,
+        content: addForm.lesson_type === 'text' ? addForm.content : null,
+        order_number: nextOrder,
+      });
 
-      if (insertError) throw insertError;
+      if (newLesson?.error) throw new Error(newLesson.error);
 
-      if (addForm.lesson_type === 'video') {
-        await getUploadUrl(newLesson.id);
+      if (addForm.lesson_type === 'video' && newLesson?.id) {
+        setActiveUploadLessonId(newLesson.id);
       }
-
-      await supabase
-        .from('courses')
-        .update({ total_lessons: lessons.length + 1 })
-        .eq('id', courseId);
 
       setLessons((prev) => [...prev, newLesson]);
       setAddForm({ title: '', lesson_type: 'video', duration: 0, is_preview: false, content: '' });
@@ -100,16 +79,12 @@ export default function TeacherLessonsPage({ params }) {
 
   const handleDeleteLesson = async (lessonId) => {
     if (!confirm('هل أنت متأكد من حذف هذا الدرس؟')) return;
-    const { error: deleteError } = await supabase.from('lessons').delete().eq('id', lessonId);
-    if (!deleteError) {
-      const updated = lessons.filter((l) => l.id !== lessonId);
-      setLessons(updated);
-      await supabase.from('courses').update({ total_lessons: updated.length }).eq('id', courseId);
-    }
+    await api.delete(`/lessons/${lessonId}`);
+    setLessons((prev) => prev.filter((l) => l.id !== lessonId));
   };
 
   const togglePreview = async (lesson) => {
-    await supabase.from('lessons').update({ is_preview: !lesson.is_preview }).eq('id', lesson.id);
+    await api.patch(`/lessons/${lesson.id}`, { is_preview: !lesson.is_preview });
     setLessons((prev) => prev.map((l) => l.id === lesson.id ? { ...l, is_preview: !l.is_preview } : l));
   };
 
@@ -203,10 +178,13 @@ export default function TeacherLessonsPage({ params }) {
                 </div>
               </form>
 
-              {uploadUrl && (
+              {activeUploadLessonId && (
                 <div className="mt-4 p-4 bg-gray-50 rounded-xl">
                   <p className="text-sm font-semibold text-gray-700 mb-3">رفع الفيديو</p>
-                  <MuxUploaderClient uploadUrl={uploadUrl} onSuccess={() => { setUploadUrl(''); setShowAddForm(false); }} />
+                  <BunnyUploaderClient
+                    lessonId={activeUploadLessonId}
+                    onUploadComplete={() => { setActiveUploadLessonId(null); setShowAddForm(false); }}
+                  />
                 </div>
               )}
             </div>

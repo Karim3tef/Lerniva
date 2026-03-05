@@ -6,7 +6,7 @@ import { BookOpen, Menu, Loader2 } from 'lucide-react';
 import Sidebar from '@/components/layout/Sidebar';
 import { STUDENT_NAVIGATION } from '@/constants';
 import { getLevelLabel, getLevelColor } from '@/lib/helpers';
-import { createClient } from '@/lib/supabase';
+import { api } from '@/lib/api';
 
 export default function MyCoursesPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -18,16 +18,7 @@ export default function MyCoursesPage() {
 
   useEffect(() => {
     const fetchEnrollments = async () => {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { setLoading(false); return; }
-
-      const { data } = await supabase
-        .from('enrollments')
-        .select('*, courses(id, title, thumbnail_url, price, level, total_lessons, total_duration, users(full_name))')
-        .eq('student_id', user.id)
-        .order('purchased_at', { ascending: false });
-
+      const data = await api.get('/enrollments/mine');
       setEnrollments(data || []);
 
       // Fetch lesson links for each course
@@ -35,35 +26,17 @@ export default function MyCoursesPage() {
       await Promise.all(
         (data || []).map(async (enrollment) => {
           const courseId = enrollment.course_id;
-
-          const { data: lastProgress } = await supabase
-            .from('lesson_progress')
-            .select('lesson_id')
-            .eq('student_id', user.id)
-            .eq('course_id', courseId)
-            .order('last_watched_at', { ascending: false })
-            .limit(1)
-            .single();
-
-          if (lastProgress?.lesson_id) {
-            links[courseId] = `/learn/${courseId}/${lastProgress.lesson_id}`;
-          } else {
-            const { data: firstLesson } = await supabase
-              .from('lessons')
-              .select('id')
-              .eq('course_id', courseId)
-              .order('order_number', { ascending: true })
-              .limit(1)
-              .single();
-
-            links[courseId] = firstLesson?.id
-              ? `/learn/${courseId}/${firstLesson.id}`
+          try {
+            const progressData = await api.get(`/progress/last-lesson/${courseId}`);
+            links[courseId] = progressData?.lessonId
+              ? `/learn/${courseId}/${progressData.lessonId}`
               : null;
+          } catch {
+            links[courseId] = null;
           }
         })
       );
       setLessonLinks(links);
-
       setLoading(false);
     };
     fetchEnrollments();

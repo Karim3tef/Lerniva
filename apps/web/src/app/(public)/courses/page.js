@@ -6,7 +6,7 @@ import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import CourseGrid from '@/components/course/CourseGrid';
 import CourseFilters from '@/components/course/CourseFilters';
-import { createClient } from '@/lib/supabase';
+import { api } from '@/lib/api';
 import useCourseStore from '@/store/courseStore';
 
 export default function CoursesPage() {
@@ -15,14 +15,8 @@ export default function CoursesPage() {
 
   useEffect(() => {
     const fetchCourses = async () => {
-      const supabase = createClient();
-      const { data } = await supabase
-        .from('courses')
-        .select('*, categories(name), users(full_name, avatar_url)')
-        .eq('is_published', true)
-        .eq('is_approved', true);
-
-      setCourses(data || []);
+      const data = await api.get('/courses');
+      setCourses(data?.courses || data || []);
       setLoading(false);
     };
     fetchCourses();

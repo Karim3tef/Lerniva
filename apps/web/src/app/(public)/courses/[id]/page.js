@@ -6,7 +6,7 @@ import { Star, Clock, Users, BookOpen, Play, ArrowRight, CheckCircle, Award } fr
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import Button from '@/components/ui/Button';
-import { createClient } from '@/lib/supabase';
+import { api } from '@/lib/api';
 import { formatPrice, formatDuration, formatNumber, getLevelLabel, getLevelColor } from '@/lib/helpers';
 import useAuthStore from '@/store/authStore';
 
@@ -20,23 +20,13 @@ export default function CourseDetailPage({ params }) {
 
   useEffect(() => {
     const fetchData = async () => {
-      const supabase = createClient();
-      const { data: courseData } = await supabase
-        .from('courses')
-        .select('*, categories(name, slug), users(full_name, avatar_url), reviews(rating)')
-        .eq('id', id)
-        .single();
+      const [courseData, reviewsData] = await Promise.all([
+        api.get(`/courses/${id}`),
+        api.get(`/reviews/course/${id}`),
+      ]);
 
       setCourse(courseData);
-
-      if (courseData) {
-        const { data: reviewsData } = await supabase
-          .from('reviews')
-          .select('*, users(full_name, avatar_url)')
-          .eq('course_id', id)
-          .order('created_at', { ascending: false });
-        setReviews(reviewsData || []);
-      }
+      setReviews(reviewsData || []);
       setLoading(false);
     };
     fetchData();

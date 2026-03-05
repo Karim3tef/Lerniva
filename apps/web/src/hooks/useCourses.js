@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useCallback } from 'react';
-import { supabase } from '@/lib/supabase';
+import { api } from '@/lib/api';
 import useCourseStore from '@/store/courseStore';
 
 export function useCourses() {
@@ -16,37 +16,29 @@ export function useCourses() {
     setLoading(true);
     setError(null);
     try {
-      const { data, error: fetchError, count } = await supabase
-        .from('courses')
-        .select('*, users(full_name, avatar_url)', { count: 'exact' })
-        .eq('is_published', true)
-        .eq('is_approved', true)
-        .order('created_at', { ascending: false })
-        .range(
-          (pagination.page - 1) * pagination.perPage,
-          pagination.page * pagination.perPage - 1
-        );
+      const params = new URLSearchParams({
+        page: pagination.page,
+        limit: pagination.perPage,
+      });
+      if (filters.category) params.set('category', filters.category);
+      if (filters.level) params.set('level', filters.level);
+      if (filters.search) params.set('search', filters.search);
 
-      if (fetchError) throw fetchError;
-      setCourses(data || []);
-      setPagination({ total: count || 0 });
+      const data = await api.get('/courses?' + params);
+      setCourses(data?.courses || data || []);
+      if (data?.total !== undefined) setPagination({ total: data.total });
     } catch (err) {
-      setError(err.message);
+      setError(err?.message || 'فشل تحميل الدورات');
       setCourses(MOCK_COURSES);
     } finally {
       setLoading(false);
     }
-  }, [pagination.page, pagination.perPage]);
+  }, [pagination.page, pagination.perPage, filters.category, filters.level, filters.search]);
 
   const fetchFeaturedCourses = useCallback(async () => {
     try {
-      const { data } = await supabase
-        .from('courses')
-        .select('*, users(full_name, avatar_url)')
-        .eq('is_published', true)
-        .eq('is_approved', true)
-        .limit(6);
-      setFeaturedCourses(data || MOCK_COURSES.slice(0, 6));
+      const data = await api.get('/courses?limit=6');
+      setFeaturedCourses(data?.courses || data || MOCK_COURSES.slice(0, 6));
     } catch {
       setFeaturedCourses(MOCK_COURSES.slice(0, 6));
     }
@@ -104,70 +96,6 @@ const MOCK_COURSES = [
     created_at: new Date().toISOString(),
     status: 'published',
     profiles: { full_name: 'أ. سارة الزهراني', avatar_url: null },
-  },
-  {
-    id: '3',
-    title: 'الذكاء الاصطناعي وتعلم الآلة - دورة شاملة',
-    description: 'من الأساسيات إلى النماذج المتقدمة، تعلم AI/ML بأسلوب عملي ومبسط',
-    category: 'ai',
-    level: 'intermediate',
-    price: 349,
-    thumbnail_url: null,
-    avg_rating: 4.7,
-    enrollment_count: 3100,
-    lessons_count: 75,
-    duration_minutes: 2880,
-    created_at: new Date().toISOString(),
-    status: 'published',
-    profiles: { full_name: 'م. خالد العمري', avatar_url: null },
-  },
-  {
-    id: '4',
-    title: 'الفيزياء الكمية للمهندسين',
-    description: 'مقدمة شاملة في مبادئ الفيزياء الكمية مع تطبيقاتها في الإلكترونيات الحديثة',
-    category: 'physics',
-    level: 'advanced',
-    price: 299,
-    thumbnail_url: null,
-    avg_rating: 4.6,
-    enrollment_count: 980,
-    lessons_count: 55,
-    duration_minutes: 1980,
-    created_at: new Date().toISOString(),
-    status: 'published',
-    profiles: { full_name: 'د. فاطمة الحربي', avatar_url: null },
-  },
-  {
-    id: '5',
-    title: 'علم البيانات وتحليلها باستخدام R',
-    description: 'تعلم تحليل البيانات والإحصاء التطبيقي باستخدام لغة R مع مشاريع حقيقية',
-    category: 'data-science',
-    level: 'intermediate',
-    price: 0,
-    thumbnail_url: null,
-    avg_rating: 4.5,
-    enrollment_count: 4200,
-    lessons_count: 40,
-    duration_minutes: 1200,
-    created_at: new Date().toISOString(),
-    status: 'published',
-    profiles: { full_name: 'أ. محمد القحطاني', avatar_url: null },
-  },
-  {
-    id: '6',
-    title: 'هندسة الميكاترونيكس والروبوتات',
-    description: 'تصميم وبرمجة أنظمة الروبوتات والميكاترونيكس من المفاهيم الأساسية إلى المشاريع المتكاملة',
-    category: 'engineering',
-    level: 'advanced',
-    price: 399,
-    thumbnail_url: null,
-    avg_rating: 4.8,
-    enrollment_count: 1250,
-    lessons_count: 85,
-    duration_minutes: 3600,
-    created_at: new Date().toISOString(),
-    status: 'published',
-    profiles: { full_name: 'م. عمر السلمي', avatar_url: null },
   },
 ];
 

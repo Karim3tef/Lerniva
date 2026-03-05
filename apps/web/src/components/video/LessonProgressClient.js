@@ -1,36 +1,41 @@
 'use client';
 
-import { useCallback, useRef } from 'react';
+import { useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import MuxPlayerClient from './MuxPlayerClient';
+import { api } from '@/lib/api';
+import BunnyPlayerClient from './BunnyPlayerClient';
 
-export default function LessonProgressClient({ playbackId, lessonTitle, courseId, lessonId, lessons }) {
+const SAVE_INTERVAL_SECONDS = 10;
+
+export default function LessonProgressClient({ playbackUrl, lessonTitle, courseId, lessonId, lessons }) {
   const router = useRouter();
-  const watchedSecondsRef = useRef(0);
+  const lastSavedRef = useRef(0);
 
-  const reportProgress = useCallback(async (watchDuration) => {
+  const saveProgress = async (currentTime, duration, ended) => {
+    const watched = Math.round(currentTime);
+    if (watched - lastSavedRef.current < SAVE_INTERVAL_SECONDS && !ended) return;
+    lastSavedRef.current = watched;
     try {
-      await fetch('/api/progress', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ course_id: courseId, lesson_id: lessonId, watch_duration: watchDuration }),
+      await api.post('/progress', {
+        lessonId,
+        courseId,
+        watchedSeconds: watched,
+        completed: ended || (duration > 0 && currentTime / duration >= 0.9),
       });
     } catch (error) {
-      console.error('Error updating progress:', error);
+      console.error('Error saving progress:', error);
     }
-  }, [courseId, lessonId]);
+  };
 
-  const handleTimeUpdate = useCallback((e) => {
-    const player = e.target;
-    if (player?.currentTime) {
-      watchedSecondsRef.current = Math.round(player.currentTime);
-    }
-  }, []);
+  const handleTimeUpdate = (e) => {
+    const { currentTime, duration } = e.target;
+    if (currentTime) saveProgress(currentTime, duration, false);
+  };
 
-  const handleEnded = useCallback(async () => {
-    await reportProgress(watchedSecondsRef.current);
+  const handleEnded = async () => {
+    const videoEl = document.querySelector('video');
+    if (videoEl) await saveProgress(videoEl.currentTime, videoEl.duration, true);
 
-    // Auto-advance to next lesson
     if (lessons && lessons.length > 0) {
       const currentIndex = lessons.findIndex((l) => l.id === lessonId);
       const nextLesson = lessons[currentIndex + 1];
@@ -38,11 +43,11 @@ export default function LessonProgressClient({ playbackId, lessonTitle, courseId
         router.push(`/learn/${courseId}/${nextLesson.id}`);
       }
     }
-  }, [courseId, lessonId, lessons, router, reportProgress]);
+  };
 
   return (
-    <MuxPlayerClient
-      playbackId={playbackId}
+    <BunnyPlayerClient
+      playbackUrl={playbackUrl}
       title={lessonTitle}
       onEnded={handleEnded}
       onTimeUpdate={handleTimeUpdate}

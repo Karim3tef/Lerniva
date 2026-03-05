@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Menu, ArrowRight, ArrowLeft, CheckCircle, BookOpen, DollarSign, Image, Globe, BarChart2, FileText, Tag } from 'lucide-react';
 import Sidebar from '@/components/layout/Sidebar';
 import { TEACHER_NAVIGATION, COURSE_LEVELS, COURSE_LANGUAGES } from '@/constants';
-import { createClient } from '@/lib/supabase';
+import { api } from '@/lib/api';
 
 const STEPS = ['معلومات الدورة', 'المحتوى', 'النشر'];
 
@@ -34,8 +34,7 @@ export default function CreateCoursePage() {
 
   useEffect(() => {
     const loadCategories = async () => {
-      const supabase = createClient();
-      const { data } = await supabase.from('categories').select('id, name').order('name');
+      const data = await api.get('/courses/categories');
       if (data && data.length > 0) setCategories(data);
     };
     loadCategories();
@@ -54,41 +53,24 @@ export default function CreateCoursePage() {
     setSubmitting(true);
     setError('');
     try {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('يجب تسجيل الدخول أولاً');
+      const newCourse = await api.post('/courses', {
+        title: formData.title,
+        description: formData.description,
+        price: Number(formData.price) || 0,
+        level: formData.level || 'beginner',
+        category_id: formData.category_id || null,
+        language: formData.language || 'ar',
+        requirements: formData.requirements
+          ? formData.requirements.split(',').map((s) => s.trim()).filter(Boolean)
+          : [],
+        what_you_learn: formData.what_you_learn
+          ? formData.what_you_learn.split(',').map((s) => s.trim()).filter(Boolean)
+          : [],
+        thumbnail_url: formData.thumbnail_url || null,
+        is_published: formData.is_published === true,
+      });
 
-      const { data: newCourse, error: insertError } = await supabase
-        .from('courses')
-        .insert({
-          teacher_id: user.id,
-          title: formData.title,
-          description: formData.description,
-          price: Number(formData.price) || 0,
-          level: formData.level || 'beginner',
-          category_id: formData.category_id || null,
-          language: formData.language || 'Arabic',
-          requirements: formData.requirements
-            ? formData.requirements.split(',').map((s) => s.trim()).filter(Boolean)
-            : [],
-          what_you_learn: formData.what_you_learn
-            ? formData.what_you_learn.split(',').map((s) => s.trim()).filter(Boolean)
-            : [],
-          thumbnail_url: formData.thumbnail_url || null,
-          is_published: formData.is_published === true,
-          is_approved: false,
-          slug:
-            formData.title
-              .toLowerCase()
-              .replace(/[^a-z0-9\u0600-\u06FF]+/g, '-')
-              .replace(/^-|-$/g, '') +
-            '-' +
-            Date.now(),
-        })
-        .select()
-        .single();
-
-      if (insertError) throw insertError;
+      if (newCourse?.error) throw new Error(newCourse.error);
 
       setCreated(true);
       setTimeout(() => router.push('/teacher/courses'), 2000);

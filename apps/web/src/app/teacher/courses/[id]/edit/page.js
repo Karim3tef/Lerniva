@@ -1,27 +1,34 @@
-import { redirect } from 'next/navigation';
-import { createServerSupabaseClient } from '@/lib/supabase-server';
+'use client';
+
+import { useEffect, useState, use } from 'react';
+import { useRouter } from 'next/navigation';
+import { api } from '@/lib/api';
 import TeacherCourseEditForm from '@/components/forms/TeacherCourseEditForm';
 
-export default async function TeacherCourseEditPage({ params }) {
-  const { id } = await params;
-  const supabase = await createServerSupabaseClient();
+export default function TeacherCourseEditPage({ params }) {
+  const { id } = use(params);
+  const router = useRouter();
+  const [course, setCourse] = useState(null);
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
+  useEffect(() => {
+    Promise.all([
+      api.get(`/courses/${id}`),
+      api.get('/courses/categories'),
+    ]).then(([courseData, catsData]) => {
+      if (!courseData || courseData.error) {
+        router.push('/teacher/courses');
+        return;
+      }
+      setCourse(courseData);
+      setCategories(catsData || []);
+      setLoading(false);
+    }).catch(() => router.push('/teacher/courses'));
+  }, [id]);
 
-  const { data: course, error } = await supabase
-    .from('courses')
-    .select('*, categories(id, name)')
-    .eq('id', id)
-    .eq('teacher_id', user.id)
-    .single();
+  if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" /></div>;
+  if (!course) return null;
 
-  if (error || !course) redirect('/teacher/courses');
-
-  const { data: categories } = await supabase
-    .from('categories')
-    .select('id, name')
-    .order('name', { ascending: true });
-
-  return <TeacherCourseEditForm course={course} categories={categories || []} />;
+  return <TeacherCourseEditForm course={course} categories={categories} />;
 }

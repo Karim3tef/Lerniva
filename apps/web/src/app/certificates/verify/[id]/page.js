@@ -1,17 +1,30 @@
+'use client';
+
+import { useEffect, useState, use } from 'react';
 import Link from 'next/link';
-import { CheckCircle, XCircle, Award } from 'lucide-react';
-import { createServerSupabaseClient } from '@/lib/supabase-server';
+import { CheckCircle, XCircle, Award, Loader2 } from 'lucide-react';
+import { api } from '@/lib/api';
 import { formatDate } from '@/lib/helpers';
 
-export default async function CertificateVerifyPage({ params }) {
-  const { id } = await params;
-  const supabase = await createServerSupabaseClient();
+export default function CertificateVerifyPage({ params }) {
+  const { id } = use(params);
+  const [cert, setCert] = useState(undefined);
+  const [loading, setLoading] = useState(true);
 
-  const { data: cert } = await supabase
-    .from('certificates')
-    .select('*, users(full_name), courses(title, users(full_name))')
-    .eq('certificate_id', id)
-    .single();
+  useEffect(() => {
+    api.get(`/certificates/verify/${id}`)
+      .then((data) => setCert(data || null))
+      .catch(() => setCert(null))
+      .finally(() => setLoading(false));
+  }, [id]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <Loader2 size={40} className="text-indigo-600 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6" dir="rtl">
