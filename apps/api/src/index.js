@@ -39,12 +39,8 @@ app.get('/health', (req, res) => {
 });
 
 // API routes
-app.use('/api', (req, res) => {
-  res.json({
-    message: 'Lerniva API - Routes will be mounted here',
-    version: '1.0.0'
-  });
-});
+import routes from './routes/index.js';
+app.use('/api', routes);
 
 // Error handler (must be last)
 app.use(errorHandler);
