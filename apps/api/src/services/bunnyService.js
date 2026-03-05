@@ -78,4 +78,9 @@ export const bunnyService = {
       .digest('hex');
     return `https://${CDN}/${videoId}/playlist.m3u8?token=${token}&expires=${exp}`;
   },
+
+  // Get TUS upload URL for direct browser upload
+  getUploadUrl(videoId) {
+    return `https://video.bunnycdn.com/tusupload`;
+  },
 };
