@@ -6,7 +6,7 @@ import Sidebar from '@/components/layout/Sidebar';
 import Badge from '@/components/ui/Badge';
 import { ADMIN_NAVIGATION } from '@/constants';
 import { formatPrice, formatDate } from '@/lib/helpers';
-import { createClient } from '@/lib/supabase';
+import { api } from '@/lib/api';
 
 const STATUS_CONFIG = {
   pending: { label: 'قيد المراجعة', variant: 'warning' },
@@ -25,22 +25,14 @@ export default function AdminWithdrawalsPage() {
   }, []);
 
   async function fetchWithdrawals() {
-    const supabase = createClient();
-    const { data } = await supabase
-      .from('withdrawals')
-      .select('*, users(full_name, email)')
-      .order('created_at', { ascending: false });
+    const data = await api.get('/admin/withdrawals');
     setWithdrawals(data || []);
     setLoading(false);
   }
 
   async function approveWithdrawal(id) {
-    const supabase = createClient();
-    const { error } = await supabase
-      .from('withdrawals')
-      .update({ status: 'approved' })
-      .eq('id', id);
-    if (!error) {
+    const result = await api.patch(`/admin/withdrawals/${id}`, { status: 'approved' });
+    if (!result?.error) {
       setWithdrawals((prev) =>
         prev.map((w) => (w.id === id ? { ...w, status: 'approved' } : w))
       );
@@ -48,12 +40,8 @@ export default function AdminWithdrawalsPage() {
   }
 
   async function rejectWithdrawal(id) {
-    const supabase = createClient();
-    const { error } = await supabase
-      .from('withdrawals')
-      .update({ status: 'rejected' })
-      .eq('id', id);
-    if (!error) {
+    const result = await api.patch(`/admin/withdrawals/${id}`, { status: 'rejected' });
+    if (!result?.error) {
       setWithdrawals((prev) =>
         prev.map((w) => (w.id === id ? { ...w, status: 'rejected' } : w))
       );

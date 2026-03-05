@@ -6,7 +6,7 @@ import Sidebar from '@/components/layout/Sidebar';
 import Badge from '@/components/ui/Badge';
 import { ADMIN_NAVIGATION } from '@/constants';
 import { formatDate } from '@/lib/helpers';
-import { createClient } from '@/lib/supabase';
+import { api } from '@/lib/api';
 
 export default function AdminUsersPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -21,24 +21,15 @@ export default function AdminUsersPage() {
   }, []);
 
   async function fetchUsers() {
-    const supabase = createClient();
-    const { data } = await supabase
-      .from('users')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(50);
+    const data = await api.get('/admin/users');
     setUsers(data || []);
     setLoading(false);
   }
 
   async function toggleUserStatus(user) {
-    const supabase = createClient();
     const newStatus = user.status === 'active' ? 'banned' : 'active';
-    const { error } = await supabase
-      .from('users')
-      .update({ status: newStatus })
-      .eq('id', user.id);
-    if (!error) {
+    const result = await api.patch(`/admin/users/${user.id}/status`, { status: newStatus });
+    if (!result?.error) {
       setUsers((prev) =>
         prev.map((u) => (u.id === user.id ? { ...u, status: newStatus } : u))
       );

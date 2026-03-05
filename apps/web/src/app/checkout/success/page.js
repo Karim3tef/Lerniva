@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { CheckCircle, BookOpen, Loader } from 'lucide-react';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
-import { createClient } from '@/lib/supabase';
+import { api } from '@/lib/api';
 
 function CheckoutSuccessContent() {
   const searchParams = useSearchParams();
@@ -16,21 +16,15 @@ function CheckoutSuccessContent() {
 
   useEffect(() => {
     const fetchEnrollment = async () => {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { setLoading(false); return; }
-
-      // Find the most recent enrollment
-      const { data } = await supabase
-        .from('enrollments')
-        .select('*, courses(id, title, thumbnail_url)')
-        .eq('student_id', user.id)
-        .order('purchased_at', { ascending: false })
-        .limit(1)
-        .single();
-
-      setEnrollment(data);
-      setLoading(false);
+      try {
+        const data = await api.get('/enrollments/mine');
+        const latest = (data || [])[0] || null;
+        setEnrollment(latest);
+      } catch {
+        // handle silently
+      } finally {
+        setLoading(false);
+      }
     };
     fetchEnrollment();
   }, [sessionId]);

@@ -8,11 +8,9 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import { createCourseSchema } from '@/lib/validations';
 import { CATEGORIES, COURSE_LEVELS, COURSE_LANGUAGES } from '@/constants';
-import { supabase } from '@/lib/supabase';
-import useAuthStore from '@/store/authStore';
+import { api } from '@/lib/api';
 
 export default function CreateCourseForm({ onSuccess }) {
-  const { user } = useAuthStore();
   const [serverError, setServerError] = useState('');
 
   const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm({
@@ -25,23 +23,17 @@ export default function CreateCourseForm({ onSuccess }) {
   const onSubmit = async (data) => {
     setServerError('');
     try {
-      const { data: course, error } = await supabase
-        .from('courses')
-        .insert({
-          title: data.title,
-          description: data.description,
-          category: data.category,
-          level: data.level,
-          price: Number(data.price),
-          language: data.language,
-          thumbnail_url: data.thumbnailUrl || null,
-          teacher_id: user?.id,
-          is_published: false,
-        })
-        .select()
-        .single();
+      const course = await api.post('/courses', {
+        title: data.title,
+        description: data.description,
+        category: data.category,
+        level: data.level,
+        price: Number(data.price),
+        language: data.language,
+        thumbnail_url: data.thumbnailUrl || null,
+      });
 
-      if (error) throw error;
+      if (course?.error) throw new Error(course.error);
       onSuccess?.(course);
     } catch (err) {
       setServerError('حدث خطأ أثناء إنشاء الدورة. يرجى المحاولة مرة أخرى.');

@@ -6,7 +6,7 @@ import Sidebar from '@/components/layout/Sidebar';
 import Badge from '@/components/ui/Badge';
 import { ADMIN_NAVIGATION } from '@/constants';
 import { getLevelLabel, formatPrice, formatDate } from '@/lib/helpers';
-import { createClient } from '@/lib/supabase';
+import { api } from '@/lib/api';
 
 function deriveStatus(course) {
   if (course.is_published && course.is_approved) return 'published';
@@ -26,14 +26,12 @@ export default function AdminCoursesPage() {
   }, []);
 
   async function fetchCourses() {
-    const supabase = createClient();
-    const { data } = await supabase
-      .from('courses')
-      .select('*, users(full_name)')
-      .order('created_at', { ascending: false });
-    const mapped = (data || []).map((c) => ({
+    const data = await api.get('/admin/courses/pending');
+    const allCourses = await api.get('/admin/courses');
+    const courseList = allCourses || data || [];
+    const mapped = courseList.map((c) => ({
       ...c,
-      teacher: c.users?.full_name || '—',
+      teacher: c.teacher_name || c.users?.full_name || '—',
       status: deriveStatus(c),
     }));
     setCourses(mapped);
@@ -41,12 +39,8 @@ export default function AdminCoursesPage() {
   }
 
   async function approveCourse(id) {
-    const supabase = createClient();
-    const { error } = await supabase
-      .from('courses')
-      .update({ is_approved: true })
-      .eq('id', id);
-    if (!error) {
+    const result = await api.patch(`/admin/courses/${id}/approve`);
+    if (!result?.error) {
       setCourses((prev) =>
         prev.map((c) =>
           c.id === id ? { ...c, is_approved: true, status: 'published' } : c
@@ -56,12 +50,8 @@ export default function AdminCoursesPage() {
   }
 
   async function rejectCourse(id) {
-    const supabase = createClient();
-    const { error } = await supabase
-      .from('courses')
-      .update({ is_approved: false, is_published: false })
-      .eq('id', id);
-    if (!error) {
+    const result = await api.patch(`/admin/courses/${id}/reject`);
+    if (!result?.error) {
       setCourses((prev) =>
         prev.map((c) =>
           c.id === id

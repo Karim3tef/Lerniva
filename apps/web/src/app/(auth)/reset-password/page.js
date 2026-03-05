@@ -1,34 +1,21 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { GraduationCap, Lock, CheckCircle, Eye, EyeOff } from 'lucide-react';
-import { createClient } from '@/lib/supabase';
+import { api } from '@/lib/api';
 
 export default function ResetPasswordPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
-  const [role, setRole] = useState('student');
 
-  useEffect(() => {
-    const supabase = createClient();
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session?.user) {
-        const { data: profile } = await supabase
-          .from('users')
-          .select('role')
-          .eq('id', session.user.id)
-          .single();
-        setRole(profile?.role ?? 'student');
-      }
-    });
-    return () => subscription.unsubscribe();
-  }, []);
+  const token = searchParams.get('token');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -36,22 +23,19 @@ export default function ResetPasswordPage() {
       setError('يجب أن تكون كلمة المرور 8 أحرف على الأقل');
       return;
     }
+    if (!token) {
+      setError('رابط إعادة التعيين غير صالح');
+      return;
+    }
     setLoading(true);
     setError('');
     try {
-      const supabase = createClient();
-      const { error: updateError } = await supabase.auth.updateUser({ password });
-      if (updateError) throw updateError;
+      await api.post('/auth/reset-password', { token, password });
       setSuccess(true);
-      // Brief delay so the user can see the success message before redirect
       const REDIRECT_DELAY_MS = 2000;
-      setTimeout(() => {
-        const dashboardPath = role === 'admin' ? '/admin/dashboard' :
-          role === 'teacher' ? '/teacher/dashboard' : '/student/dashboard';
-        router.push(dashboardPath);
-      }, REDIRECT_DELAY_MS);
+      setTimeout(() => router.push('/login'), REDIRECT_DELAY_MS);
     } catch (err) {
-      setError(err.message || 'حدث خطأ. حاول مجدداً.');
+      setError(err?.message || 'حدث خطأ. حاول مجدداً.');
     } finally {
       setLoading(false);
     }

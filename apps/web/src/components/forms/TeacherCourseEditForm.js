@@ -6,7 +6,7 @@ import { Menu, Save, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import Sidebar from '@/components/layout/Sidebar';
 import { TEACHER_NAVIGATION } from '@/constants';
-import { createClient } from '@/lib/supabase';
+import { api } from '@/lib/api';
 
 export default function TeacherCourseEditForm({ course, categories }) {
   const router = useRouter();
@@ -38,28 +38,19 @@ export default function TeacherCourseEditForm({ course, categories }) {
     setSuccess('');
 
     try {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.push('/login'); return; }
+      const result = await api.put(`/courses/${course.id}`, {
+        title: form.title,
+        description: form.description,
+        price: Number(form.price),
+        level: form.level,
+        category_id: form.category_id || null,
+        language: form.language,
+        requirements: form.requirements ? form.requirements.split(',').map((s) => s.trim()).filter(Boolean) : [],
+        what_you_learn: form.what_you_learn ? form.what_you_learn.split(',').map((s) => s.trim()).filter(Boolean) : [],
+        thumbnail_url: form.thumbnail_url || null,
+      });
 
-      const { error: updateError } = await supabase
-        .from('courses')
-        .update({
-          title: form.title,
-          description: form.description,
-          price: Number(form.price),
-          level: form.level,
-          category_id: form.category_id || null,
-          language: form.language,
-          requirements: form.requirements ? form.requirements.split(',').map((s) => s.trim()).filter(Boolean) : [],
-          what_you_learn: form.what_you_learn ? form.what_you_learn.split(',').map((s) => s.trim()).filter(Boolean) : [],
-          thumbnail_url: form.thumbnail_url || null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', course.id)
-        .eq('teacher_id', user.id);
-
-      if (updateError) throw updateError;
+      if (result?.error) throw new Error(result.error);
       setSuccess('تم حفظ التغييرات بنجاح');
       setTimeout(() => router.push('/teacher/courses'), 1500);
     } catch (err) {

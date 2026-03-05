@@ -6,7 +6,7 @@ import Sidebar from '@/components/layout/Sidebar';
 import StatsCard from '@/components/dashboard/StatsCard';
 import RevenueChart from '@/components/dashboard/RevenueChart';
 import { TEACHER_NAVIGATION } from '@/constants';
-import { createClient } from '@/lib/supabase';
+import { api } from '@/lib/api';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 
 const CHART_COLORS = ['#4F46E5', '#F59E0B', '#10B981', '#EC4899', '#3B82F6', '#8B5CF6', '#F97316', '#14B8A6'];
@@ -19,38 +19,18 @@ export default function TeacherAnalyticsPage() {
 
   useEffect(() => {
     const fetchAnalytics = async () => {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { setLoading(false); return; }
-
-      const { data: courses } = await supabase
-        .from('courses')
-        .select('id, title, categories(name)')
-        .eq('teacher_id', user.id);
-
-      if (!courses || courses.length === 0) { setLoading(false); return; }
-      const courseIds = courses.map((c) => c.id);
-
-      const [{ data: enrollments }, { data: payments }, { data: reviews }] = await Promise.all([
-        supabase.from('enrollments').select('course_id').in('course_id', courseIds),
-        supabase.from('payments').select('course_id, amount').in('course_id', courseIds).eq('status', 'succeeded'),
-        supabase.from('reviews').select('course_id, rating').in('course_id', courseIds),
-      ]);
-
-      const analytics = courses.map((course) => ({
-        name: course.title.length > 20 ? course.title.substring(0, 20) + '…' : course.title,
-        fullTitle: course.title,
-        category: course.categories?.name || '—',
-        students: enrollments?.filter((e) => e.course_id === course.id).length || 0,
-        revenue: payments?.filter((p) => p.course_id === course.id).reduce((sum, p) => sum + Number(p.amount), 0) || 0,
-        rating: (() => {
-          const r = reviews?.filter((rv) => rv.course_id === course.id);
-          return r?.length ? (r.reduce((s, rv) => s + rv.rating, 0) / r.length).toFixed(1) : '—';
-        })(),
-      }));
-
-      setAnalyticsData(analytics);
-      setLoading(false);
+      try {
+        const data = await api.get('/teachers/analytics');
+        if (data?.courses) {
+          setAnalyticsData(data.courses);
+        } else if (Array.isArray(data)) {
+          setAnalyticsData(data);
+        }
+      } catch {
+        // handle silently
+      } finally {
+        setLoading(false);
+      }
     };
     fetchAnalytics();
   }, []);

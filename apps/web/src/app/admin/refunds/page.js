@@ -6,7 +6,7 @@ import Sidebar from '@/components/layout/Sidebar';
 import Badge from '@/components/ui/Badge';
 import { ADMIN_NAVIGATION } from '@/constants';
 import { formatPrice, formatDate } from '@/lib/helpers';
-import { createClient } from '@/lib/supabase';
+import { api } from '@/lib/api';
 
 const STATUS_CONFIG = {
   pending: { label: 'قيد المراجعة', variant: 'warning' },
@@ -21,26 +21,18 @@ export default function AdminRefundsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchRefunds();
+    fetchRefundsList();
   }, []);
 
-  async function fetchRefunds() {
-    const supabase = createClient();
-    const { data } = await supabase
-      .from('refunds')
-      .select('*, users(full_name, email), courses(title)')
-      .order('created_at', { ascending: false });
+  async function fetchRefundsList() {
+    const data = await api.get('/admin/payments');
     setRefunds(data || []);
     setLoading(false);
   }
 
   async function approveRefund(id) {
-    const supabase = createClient();
-    const { error } = await supabase
-      .from('refunds')
-      .update({ status: 'approved' })
-      .eq('id', id);
-    if (!error) {
+    const result = await api.post(`/admin/refund/${id}`);
+    if (!result?.error) {
       setRefunds((prev) =>
         prev.map((r) => (r.id === id ? { ...r, status: 'approved' } : r))
       );
@@ -48,12 +40,8 @@ export default function AdminRefundsPage() {
   }
 
   async function rejectRefund(id) {
-    const supabase = createClient();
-    const { error } = await supabase
-      .from('refunds')
-      .update({ status: 'rejected' })
-      .eq('id', id);
-    if (!error) {
+    const result = await api.patch(`/admin/payments/${id}`, { status: 'rejected' });
+    if (!result?.error) {
       setRefunds((prev) =>
         prev.map((r) => (r.id === id ? { ...r, status: 'rejected' } : r))
       );

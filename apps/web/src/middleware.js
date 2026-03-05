@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-export function proxy(request) {
+export function middleware(request) {
   const { pathname } = request.nextUrl;
   const protectedRoutes = ['/student', '/teacher', '/admin', '/learn', '/checkout'];
   const authRoutes = ['/login', '/register', '/forgot-password', '/reset-password'];

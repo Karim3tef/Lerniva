@@ -4,8 +4,8 @@ import { useState, useEffect } from 'react';
 import { Menu, DollarSign, Clock, CheckCircle, XCircle } from 'lucide-react';
 import Sidebar from '@/components/layout/Sidebar';
 import { TEACHER_NAVIGATION } from '@/constants';
-import { createClient } from '@/lib/supabase';
 import { formatPrice, formatDate } from '@/lib/helpers';
+import { api } from '@/lib/api';
 
 const STATUS_LABEL = { pending: 'قيد المراجعة', approved: 'تمت الموافقة', rejected: 'مرفوض', paid: 'تم الدفع' };
 const STATUS_COLOR = { pending: 'bg-amber-100 text-amber-700', approved: 'bg-emerald-100 text-emerald-700', rejected: 'bg-red-100 text-red-700', paid: 'bg-blue-100 text-blue-700' };
@@ -20,45 +20,20 @@ export default function TeacherWithdrawalsPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  const supabase = createClient();
-
   useEffect(() => {
     fetchData();
   }, []);
 
   const fetchData = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    // Get courses taught by this teacher
-    const { data: courses } = await supabase.from('courses').select('id').eq('teacher_id', user.id);
-    const courseIds = (courses || []).map((c) => c.id);
-
-    // Calculate revenue from payments
-    let totalRevenue = 0;
-    if (courseIds.length > 0) {
-      const { data: payments } = await supabase
-        .from('payments')
-        .select('amount')
-        .in('course_id', courseIds)
-        .eq('status', 'succeeded');
-      totalRevenue = (payments || []).reduce((sum, p) => sum + Number(p.amount), 0);
+    try {
+      const data = await api.get('/teachers/withdrawals');
+      setBalance(data?.balance || 0);
+      setWithdrawals(data?.withdrawals || []);
+    } catch {
+      // handle silently
+    } finally {
+      setLoading(false);
     }
-
-    // Get total withdrawn
-    const { data: allWithdrawals } = await supabase
-      .from('withdrawals')
-      .select('*')
-      .eq('teacher_id', user.id)
-      .order('created_at', { ascending: false });
-
-    const totalWithdrawn = (allWithdrawals || [])
-      .filter((w) => w.status !== 'rejected')
-      .reduce((sum, w) => sum + Number(w.amount), 0);
-
-    setBalance(Math.max(0, totalRevenue - totalWithdrawn));
-    setWithdrawals(allWithdrawals || []);
-    setLoading(false);
   };
 
   const handleWithdraw = async (e) => {
@@ -75,13 +50,8 @@ export default function TeacherWithdrawalsPage() {
     setSubmitting(true);
     setError('');
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      const { error: insertError } = await supabase.from('withdrawals').insert({
-        teacher_id: user.id,
-        amount: withdrawAmount,
-        status: 'pending',
-      });
-      if (insertError) throw insertError;
+      const result = await api.post('/teachers/withdrawals', { amount: withdrawAmount });
+      if (result?.error) throw new Error(result.error);
       setSuccess('تم إرسال طلب السحب بنجاح');
       setAmount('');
       fetchData();

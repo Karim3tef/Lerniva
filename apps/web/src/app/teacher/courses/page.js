@@ -6,7 +6,7 @@ import { Menu, PlusCircle, Edit, BarChart2, Trash2, BookOpen } from 'lucide-reac
 import Sidebar from '@/components/layout/Sidebar';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { TEACHER_NAVIGATION } from '@/constants';
-import { createClient } from '@/lib/supabase';
+import { api } from '@/lib/api';
 import { getStatusLabel, getStatusColor, getLevelLabel, formatPrice } from '@/lib/helpers';
 
 function getCourseStatus(course) {
@@ -25,17 +25,8 @@ export default function TeacherCoursesPage() {
 
   useEffect(() => {
     const fetchCourses = async () => {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { setLoading(false); return; }
-
-      const { data, error } = await supabase
-        .from('courses')
-        .select('*, categories(name)')
-        .eq('teacher_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (!error) setCourseList(data || []);
+      const data = await api.get('/courses/teacher/mine');
+      setCourseList(data || []);
       setLoading(false);
     };
     fetchCourses();
@@ -47,9 +38,8 @@ export default function TeacherCoursesPage() {
 
   const confirmDelete = async () => {
     setDeleting(true);
-    const supabase = createClient();
-    const { error } = await supabase.from('courses').delete().eq('id', deleteModal.courseId);
-    if (!error) setCourseList((prev) => prev.filter((c) => c.id !== deleteModal.courseId));
+    await api.delete(`/courses/${deleteModal.courseId}`);
+    setCourseList((prev) => prev.filter((c) => c.id !== deleteModal.courseId));
     setDeleting(false);
     setDeleteModal({ open: false, courseId: null });
   };

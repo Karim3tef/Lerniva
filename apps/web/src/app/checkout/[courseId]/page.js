@@ -5,8 +5,8 @@ import Link from 'next/link';
 import { BookOpen, Clock, Award, Play, Loader } from 'lucide-react';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
-import { createClient } from '@/lib/supabase';
 import { formatPrice } from '@/lib/helpers';
+import { api } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 
 export default function CheckoutPage({ params }) {
@@ -19,12 +19,7 @@ export default function CheckoutPage({ params }) {
 
   useEffect(() => {
     const fetchCourse = async () => {
-      const supabase = createClient();
-      const { data } = await supabase
-        .from('courses')
-        .select('*, users(full_name, avatar_url)')
-        .eq('id', courseId)
-        .single();
+      const data = await api.get(`/courses/${courseId}`);
       setCourse(data);
       setLoading(false);
     };
@@ -35,21 +30,16 @@ export default function CheckoutPage({ params }) {
     setEnrolling(true);
     setError('');
     try {
-      const res = await fetch('/api/stripe/create-checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ course_id: courseId }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
+      const data = await api.post('/payments/checkout', { course_id: courseId });
+      if (data?.error) {
         setError(data.error || 'حدث خطأ في التسجيل');
         return;
       }
-      if (data.enrolled) {
+      if (data?.enrolled) {
         router.push('/student/my-courses');
         return;
       }
-      if (data.url) {
+      if (data?.url) {
         window.location.href = data.url;
       }
     } catch (err) {
