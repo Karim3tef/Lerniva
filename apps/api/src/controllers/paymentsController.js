@@ -1,12 +1,28 @@
 import pool from '../db/pool.js';
 import { stripeService } from '../services/stripeService.js';
 
+async function ensureVerifiedStudent(studentId) {
+  const userResult = await pool.query(
+    'SELECT email_verified FROM users WHERE id = $1',
+    [studentId]
+  );
+
+  if (userResult.rows.length === 0) return { ok: false, reason: 'not_found' };
+  if (!userResult.rows[0].email_verified) return { ok: false, reason: 'unverified' };
+  return { ok: true };
+}
+
 // POST /api/payments/checkout - Create Stripe checkout session
 export async function createCheckout(req, res, next) {
   try {
     const studentId = req.user.id;
     const studentEmail = req.user.email;
     const { courseId } = req.body;
+
+    const verification = await ensureVerifiedStudent(studentId);
+    if (!verification.ok && verification.reason === 'unverified') {
+      return res.status(403).json({ error: 'يرجى تأكيد بريدك الإلكتروني قبل الاشتراك في الدورات' });
+    }
 
     // Get course details
     const courseQuery = 'SELECT id, title, price, teacher_id FROM courses WHERE id = $1';
@@ -55,6 +71,11 @@ export async function confirmCheckout(req, res, next) {
   try {
     const studentId = req.user.id;
     const { sessionId } = req.body;
+
+    const verification = await ensureVerifiedStudent(studentId);
+    if (!verification.ok && verification.reason === 'unverified') {
+      return res.status(403).json({ error: 'يرجى تأكيد بريدك الإلكتروني قبل الاشتراك في الدورات' });
+    }
 
     if (!sessionId) {
       return res.status(400).json({ error: 'sessionId مطلوب' });

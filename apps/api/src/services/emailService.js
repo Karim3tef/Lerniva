@@ -5,6 +5,11 @@ import env from '../config/env.js';
 let transporter = null;
 let azureClient = null;
 
+function toLogRecipients(to) {
+  if (Array.isArray(to)) return to.join(', ');
+  return String(to || '');
+}
+
 function extractEmailAddress(emailFrom) {
   const value = String(emailFrom || '').trim();
   const match = value.match(/<([^>]+)>/);
@@ -72,30 +77,48 @@ export const emailService = {
 
   async send({ to, subject, html, text }) {
     const provider = getEmailProvider();
+    const recipients = toLogRecipients(to);
+    const startedAt = Date.now();
+
+    console.info(`[email] send attempt provider=${provider} to="${recipients}" subject="${subject}"`);
 
     if (provider === 'azure') {
       const client = getAzureClient();
       if (!client || !env.email.azureSenderAddress) {
         throw new Error('Azure Communication Services Email is not configured');
       }
+      try {
+        const poller = await client.beginSend({
+          senderAddress: env.email.azureSenderAddress,
+          content: {
+            subject,
+            plainText: text || '',
+            html,
+          },
+          recipients: {
+            to: Array.isArray(to)
+              ? to.map((address) => ({ address }))
+              : [{ address: to }],
+          },
+        });
 
-      const poller = await client.beginSend({
-        senderAddress: env.email.azureSenderAddress,
-        content: {
-          subject,
-          plainText: text || '',
-          html,
-        },
-        recipients: {
-          to: Array.isArray(to)
-            ? to.map((address) => ({ address }))
-            : [{ address: to }],
-        },
-      });
-
-      const result = await poller.pollUntilDone();
-      if (result.status !== 'Succeeded') {
-        throw new Error(`Azure email send failed with status: ${result.status}`);
+        const result = await poller.pollUntilDone();
+        const elapsedMs = Date.now() - startedAt;
+        console.info(
+          `[email] azure result status=${result.status} messageId=${result.id || 'n/a'} durationMs=${elapsedMs}`
+        );
+        if (result.status !== 'Succeeded') {
+          throw new Error(`Azure email send failed with status: ${result.status}`);
+        }
+      } catch (error) {
+        const elapsedMs = Date.now() - startedAt;
+        console.error(`[email] azure send failed to="${recipients}" subject="${subject}"`, {
+          message: error?.message,
+          code: error?.code,
+          statusCode: error?.statusCode,
+          durationMs: elapsedMs,
+        });
+        throw error;
       }
 
       return;
@@ -105,14 +128,27 @@ export const emailService = {
     if (!activeTransporter) {
       throw new Error('SMTP is not configured');
     }
-
-    await activeTransporter.sendMail({
-      from: env.email.from || extractEmailAddress(env.email.azureSenderAddress),
-      to,
-      subject,
-      html,
-      text,
-    });
+    try {
+      const smtpResult = await activeTransporter.sendMail({
+        from: env.email.from || extractEmailAddress(env.email.azureSenderAddress),
+        to,
+        subject,
+        html,
+        text,
+      });
+      const elapsedMs = Date.now() - startedAt;
+      console.info(
+        `[email] smtp sent messageId=${smtpResult?.messageId || 'n/a'} to="${recipients}" durationMs=${elapsedMs}`
+      );
+    } catch (error) {
+      const elapsedMs = Date.now() - startedAt;
+      console.error(`[email] smtp send failed to="${recipients}" subject="${subject}"`, {
+        message: error?.message,
+        code: error?.code,
+        durationMs: elapsedMs,
+      });
+      throw error;
+    }
   },
 
   async sendEmailVerification(to, fullName, verifyUrl) {

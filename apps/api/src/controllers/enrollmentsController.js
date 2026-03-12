@@ -1,5 +1,16 @@
 import pool from '../db/pool.js';
 
+async function ensureVerifiedStudent(studentId) {
+  const userResult = await pool.query(
+    'SELECT email_verified FROM users WHERE id = $1',
+    [studentId]
+  );
+
+  if (userResult.rows.length === 0) return { ok: false, reason: 'not_found' };
+  if (!userResult.rows[0].email_verified) return { ok: false, reason: 'unverified' };
+  return { ok: true };
+}
+
 // GET /api/enrollments/mine - Get all enrolled courses for student
 export async function getMyEnrollments(req, res, next) {
   try {
@@ -43,6 +54,11 @@ export async function enrollInCourse(req, res, next) {
     const studentId = req.user.id;
     const { courseId, course_id } = req.body;
     const targetCourseId = courseId || course_id;
+
+    const verification = await ensureVerifiedStudent(studentId);
+    if (!verification.ok && verification.reason === 'unverified') {
+      return res.status(403).json({ error: 'يرجى تأكيد بريدك الإلكتروني قبل الاشتراك في الدورات' });
+    }
 
     if (!targetCourseId) {
       return res.status(400).json({ error: 'courseId مطلوب' });

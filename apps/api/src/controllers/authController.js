@@ -44,9 +44,17 @@ async function createEmailVerificationToken(userId) {
 async function sendVerificationEmail(user) {
   if (!emailService.isConfigured()) return false;
   const token = await createEmailVerificationToken(user.id);
-  const verifyUrl = `${env.frontendUrl}/verify-email?token=${token}`;
+  const verifyUrl = `${env.frontendUrl}/verify-email?token=${token}&email=${encodeURIComponent(user.email)}`;
   await emailService.sendEmailVerification(user.email, user.full_name, verifyUrl);
   return true;
+}
+
+function runInBackground(task, label) {
+  setImmediate(() => {
+    task().catch((error) => {
+      console.error(`[background:${label}] failed`, error?.message || error);
+    });
+  });
 }
 
 export const authController = {
@@ -86,7 +94,10 @@ export const authController = {
 
       let verificationEmailSent = false;
       if (env.email.requireVerification) {
-        verificationEmailSent = await sendVerificationEmail(user);
+        verificationEmailSent = emailService.isConfigured();
+        if (verificationEmailSent) {
+          runInBackground(() => sendVerificationEmail(user), 'email-verification');
+        }
       }
 
       if (env.email.requireVerification) {
@@ -312,7 +323,10 @@ export const authController = {
 
       if (emailService.isConfigured()) {
         const resetUrl = `${env.frontendUrl}/reset-password?token=${resetToken}`;
-        await emailService.sendPasswordReset(user.email, user.full_name, resetUrl);
+        runInBackground(
+          () => emailService.sendPasswordReset(user.email, user.full_name, resetUrl),
+          'password-reset'
+        );
       }
 
       res.json({ message: 'إذا كان البريد مسجلاً، ستتلقى رابط إعادة تعيين كلمة المرور' });
@@ -395,10 +409,9 @@ export const authController = {
         [verification.user_id]
       );
       await pool.query(
-        `UPDATE email_verification_tokens
-         SET used_at = NOW()
-         WHERE id = $1`,
-        [verification.id]
+        `DELETE FROM email_verification_tokens
+         WHERE id = $1 OR user_id = $2`,
+        [verification.id, verification.user_id]
       );
 
       res.json({ message: 'تم تأكيد البريد الإلكتروني بنجاح' });
@@ -435,7 +448,7 @@ export const authController = {
         return res.status(503).json({ error: 'خدمة البريد غير مهيأة' });
       }
 
-      await sendVerificationEmail(user);
+      runInBackground(() => sendVerificationEmail(user), 'email-resend-verification');
       res.json({ message: 'تم إرسال بريد التأكيد' });
     } catch (error) {
       next(error);

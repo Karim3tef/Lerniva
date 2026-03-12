@@ -41,17 +41,6 @@ services:
       BUNNY_API_KEY: 9ecd2bab-0318-4d1a-a2e667ee9cd9-647b-4f2b
       BUNNY_CDN_HOSTNAME: vz-d59a6d38-707.b-cdn.net
       BUNNY_WEBHOOK_SECRET: your-bunny-webhook-secret
-      SMTP_HOST: ${SMTP_HOST}
-      SMTP_PORT: ${SMTP_PORT}
-      SMTP_USER: ${SMTP_USER}
-      SMTP_PASS: ${SMTP_PASS}
-      EMAIL_FROM: ${EMAIL_FROM}
-      EMAIL_PROVIDER: ${EMAIL_PROVIDER}
-      AZURE_COMMUNICATION_CONNECTION_STRING: ${AZURE_COMMUNICATION_CONNECTION_STRING}
-      AZURE_COMMUNICATION_SENDER_ADDRESS: ${AZURE_COMMUNICATION_SENDER_ADDRESS}
-      EMAIL_VERIFICATION_REQUIRED: ${EMAIL_VERIFICATION_REQUIRED}
-      EMAIL_VERIFICATION_TOKEN_HOURS: ${EMAIL_VERIFICATION_TOKEN_HOURS}
-      PASSWORD_RESET_TOKEN_HOURS: ${PASSWORD_RESET_TOKEN_HOURS}
     ports:
       - "4000:4000"
 
@@ -69,8 +58,18 @@ services:
       - api
     environment:
       NODE_ENV: production
+      INTERNAL_API_URL: http://api:4000/api
     ports:
       - "3000:3000"
+
+  adminer:
+    image: adminer:4
+    container_name: lerniva-adminer
+    restart: unless-stopped
+    depends_on:
+      - db
+    ports:
+      - "8080:8080"
 
 volumes:
   postgres_data:
