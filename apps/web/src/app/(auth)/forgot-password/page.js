@@ -8,7 +8,7 @@ import { GraduationCap, Mail, ArrowLeft, CheckCircle } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import { forgotPasswordSchema } from '@/lib/validations';
-import { resetPassword } from '@/lib/auth';
+import { forgotPassword } from '@/lib/auth';
 
 export default function ForgotPasswordPage() {
   const [sent, setSent] = useState(false);
@@ -21,10 +21,11 @@ export default function ForgotPasswordPage() {
   const onSubmit = async (data) => {
     setServerError('');
     try {
-      await resetPassword(data.email);
+      await forgotPassword(data.email);
       setSent(true);
-    } catch {
-      setServerError('حدث خطأ. تأكد من البريد الإلكتروني وأعد المحاولة.');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err || '');
+      setServerError(message || 'حدث خطأ. تأكد من البريد الإلكتروني وأعد المحاولة.');
     }
   };
 

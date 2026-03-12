@@ -1,34 +1,28 @@
 import nodemailer from 'nodemailer';
-import { EmailClient } from '@azure/communication-email';
+import { Resend } from 'resend';
 import env from '../config/env.js';
 
 let transporter = null;
-let azureClient = null;
+let resendClient = null;
 
 function toLogRecipients(to) {
   if (Array.isArray(to)) return to.join(', ');
   return String(to || '');
 }
 
-function extractEmailAddress(emailFrom) {
-  const value = String(emailFrom || '').trim();
-  const match = value.match(/<([^>]+)>/);
-  return (match?.[1] || value).trim();
-}
-
 function getEmailProvider() {
-  if (env.email.provider === 'azure') return 'azure';
+  if (env.email.provider === 'resend') return 'resend';
   if (env.email.provider === 'smtp') return 'smtp';
 
-  if (env.email.azureConnectionString && env.email.azureSenderAddress) return 'azure';
+  if (env.email.resendApiKey) return 'resend';
   return 'smtp';
 }
 
-function getAzureClient() {
-  if (azureClient) return azureClient;
-  if (!env.email.azureConnectionString || !env.email.azureSenderAddress) return null;
-  azureClient = new EmailClient(env.email.azureConnectionString);
-  return azureClient;
+function getResendClient() {
+  if (resendClient) return resendClient;
+  if (!env.email.resendApiKey) return null;
+  resendClient = new Resend(env.email.resendApiKey);
+  return resendClient;
 }
 
 function getTransporter() {
@@ -68,8 +62,8 @@ function buildEmailLayout({ title, bodyHtml, ctaText = null, ctaUrl = null }) {
 export const emailService = {
   isConfigured() {
     const provider = getEmailProvider();
-    if (provider === 'azure') {
-      return Boolean(getAzureClient() && env.email.azureSenderAddress);
+    if (provider === 'resend') {
+      return Boolean(getResendClient());
     }
 
     return Boolean(getTransporter());
@@ -82,46 +76,38 @@ export const emailService = {
 
     console.info(`[email] send attempt provider=${provider} to="${recipients}" subject="${subject}"`);
 
-    if (provider === 'azure') {
-      const client = getAzureClient();
-      if (!client || !env.email.azureSenderAddress) {
-        throw new Error('Azure Communication Services Email is not configured');
+    if (provider === 'resend') {
+      const client = getResendClient();
+      if (!client) {
+        throw new Error('Resend is not configured – set RESEND_API_KEY');
       }
       try {
-        const poller = await client.beginSend({
-          senderAddress: env.email.azureSenderAddress,
-          content: {
-            subject,
-            plainText: text || '',
-            html,
-          },
-          recipients: {
-            to: Array.isArray(to)
-              ? to.map((address) => ({ address }))
-              : [{ address: to }],
-          },
+        const { data, error } = await client.emails.send({
+          from: env.email.from,
+          to: Array.isArray(to) ? to : [to],
+          subject,
+          html,
+          text: text || undefined,
         });
 
-        const result = await poller.pollUntilDone();
+        if (error) {
+          throw new Error(`Resend API error: ${error.message}`);
+        }
+
         const elapsedMs = Date.now() - startedAt;
         console.info(
-          `[email] azure result status=${result.status} messageId=${result.id || 'n/a'} durationMs=${elapsedMs}`
+          `[email] resend result messageId=${data?.id || 'n/a'} durationMs=${elapsedMs}`
         );
-        if (result.status !== 'Succeeded') {
-          throw new Error(`Azure email send failed with status: ${result.status}`);
-        }
+        return { durationMs: elapsedMs, messageId: data?.id || null };
       } catch (error) {
         const elapsedMs = Date.now() - startedAt;
-        console.error(`[email] azure send failed to="${recipients}" subject="${subject}"`, {
+        console.error(`[email] resend send failed to="${recipients}" subject="${subject}"`, {
           message: error?.message,
-          code: error?.code,
           statusCode: error?.statusCode,
           durationMs: elapsedMs,
         });
         throw error;
       }
-
-      return;
     }
 
     const activeTransporter = getTransporter();
@@ -130,7 +116,7 @@ export const emailService = {
     }
     try {
       const smtpResult = await activeTransporter.sendMail({
-        from: env.email.from || extractEmailAddress(env.email.azureSenderAddress),
+        from: env.email.from,
         to,
         subject,
         html,
@@ -140,6 +126,7 @@ export const emailService = {
       console.info(
         `[email] smtp sent messageId=${smtpResult?.messageId || 'n/a'} to="${recipients}" durationMs=${elapsedMs}`
       );
+      return { durationMs: elapsedMs, messageId: smtpResult?.messageId || null };
     } catch (error) {
       const elapsedMs = Date.now() - startedAt;
       console.error(`[email] smtp send failed to="${recipients}" subject="${subject}"`, {
@@ -162,7 +149,7 @@ export const emailService = {
     });
     const text = `Hello ${safeName}, confirm your account: ${verifyUrl}`;
 
-    await this.send({ to, subject, html, text });
+    return await this.send({ to, subject, html, text });
   },
 
   async sendPasswordReset(to, fullName, resetUrl) {
@@ -176,7 +163,7 @@ export const emailService = {
     });
     const text = `Hello ${safeName}, reset your password: ${resetUrl}`;
 
-    await this.send({ to, subject, html, text });
+    return await this.send({ to, subject, html, text });
   },
 
   async sendAnnouncement(to, subject, htmlBody, textBody) {
