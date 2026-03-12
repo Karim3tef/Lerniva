@@ -15,6 +15,7 @@ export default function RegisterForm() {
   const router = useRouter();
   const [serverError, setServerError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('يمكنك الآن تسجيل الدخول مباشرة');
 
   const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm({
     resolver: zodResolver(registerSchema),
@@ -26,18 +27,27 @@ export default function RegisterForm() {
   const onSubmit = async (data) => {
     setServerError('');
     try {
-      await api.post('/auth/register', {
+      const response = await api.post('/auth/register', {
         email: data.email,
         password: data.password,
-        fullName: data.fullName,
+        full_name: data.fullName,
         role: data.role,
       });
+      if (response?.emailVerificationRequired) {
+        setSuccessMessage('تحقق من بريدك الإلكتروني واضغط رابط التأكيد قبل تسجيل الدخول');
+      } else {
+        setSuccessMessage('يمكنك الآن تسجيل الدخول مباشرة');
+      }
       setSuccess(true);
     } catch (err) {
-      if (err?.message?.includes('already registered') || err?.message?.includes('already exists')) {
+      if (
+        err?.message?.includes('already registered') ||
+        err?.message?.includes('already exists') ||
+        err?.message?.includes('مسجل بالفعل')
+      ) {
         setServerError('هذا البريد الإلكتروني مسجل مسبقاً');
       } else {
-        setServerError('حدث خطأ أثناء إنشاء الحساب. يرجى المحاولة مرة أخرى.');
+        setServerError(err?.message || 'حدث خطأ أثناء إنشاء الحساب. يرجى المحاولة مرة أخرى.');
       }
     }
   };
@@ -50,7 +60,7 @@ export default function RegisterForm() {
         </div>
         <h3 className="text-xl font-bold text-gray-900 mb-2">تم إنشاء حسابك بنجاح!</h3>
         <p className="text-gray-500 text-sm mb-6">
-          تحقق من بريدك الإلكتروني لتفعيل حسابك
+          {successMessage}
         </p>
         <Link href="/login">
           <Button fullWidth>تسجيل الدخول</Button>

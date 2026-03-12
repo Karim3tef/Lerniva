@@ -9,10 +9,10 @@ export async function getCourseReviews(req, res, next) {
 
     const query = `
       SELECT r.*,
-        u.name as user_name,
-        u.avatar as user_avatar
+        u.full_name as user_name,
+        u.avatar_url as user_avatar
       FROM reviews r
-      JOIN users u ON r.user_id = u.id
+      JOIN users u ON r.student_id = u.id
       WHERE r.course_id = $1
       ORDER BY r.created_at DESC
       LIMIT $2 OFFSET $3
@@ -73,7 +73,7 @@ export async function submitReview(req, res, next) {
 
     // Check if already reviewed
     const existingReview = await pool.query(
-      'SELECT id FROM reviews WHERE course_id = $1 AND user_id = $2',
+      'SELECT id FROM reviews WHERE course_id = $1 AND student_id = $2',
       [courseId, studentId]
     );
 
@@ -81,8 +81,8 @@ export async function submitReview(req, res, next) {
       // Update existing review
       const updateQuery = `
         UPDATE reviews
-        SET rating = $1, comment = $2, updated_at = NOW()
-        WHERE course_id = $3 AND user_id = $4
+        SET rating = $1, comment = $2
+        WHERE course_id = $3 AND student_id = $4
         RETURNING *
       `;
 
@@ -96,7 +96,7 @@ export async function submitReview(req, res, next) {
 
     // Create new review
     const insertQuery = `
-      INSERT INTO reviews (course_id, user_id, rating, comment)
+      INSERT INTO reviews (course_id, student_id, rating, comment)
       VALUES ($1, $2, $3, $4)
       RETURNING *
     `;
@@ -119,7 +119,7 @@ export async function deleteReview(req, res, next) {
     const userId = req.user.id;
 
     const result = await pool.query(
-      'DELETE FROM reviews WHERE course_id = $1 AND user_id = $2 RETURNING id',
+      'DELETE FROM reviews WHERE course_id = $1 AND student_id = $2 RETURNING id',
       [courseId, userId]
     );
 

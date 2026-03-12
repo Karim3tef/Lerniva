@@ -9,6 +9,7 @@ import { CATEGORIES } from '@/constants';
 export default function CourseCard({ course, compact = false }) {
   const category = CATEGORIES.find((c) => c.id === course.category);
   const levelColor = getLevelColor(course.level);
+  const avgRating = Number(course.avg_rating || 0);
 
   return (
     <Link href={`/courses/${course.id}`} className="block group">
@@ -92,7 +93,7 @@ export default function CourseCard({ course, compact = false }) {
             <div className="flex items-center gap-1">
               <Star size={13} className="text-amber-400 fill-amber-400" />
               <span className="text-xs font-bold text-gray-700">
-                {course.avg_rating?.toFixed(1) || '4.5'}
+                {avgRating > 0 ? avgRating.toFixed(1) : '4.5'}
               </span>
               <span className="text-xs text-gray-400">
                 ({formatNumber(course.enrollment_count || 0)})

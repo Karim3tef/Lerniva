@@ -5,12 +5,12 @@ import { api } from '@/lib/api';
 import useAuthStore from '@/store/authStore';
 
 export function useNotifications() {
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, isLoading: authLoading } = useAuthStore();
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (authLoading || !isAuthenticated) return;
 
     api.get('/notifications').then((data) => {
       setNotifications(data || []);
@@ -24,7 +24,7 @@ export function useNotifications() {
     });
 
     return () => socket.off('notification');
-  }, [isAuthenticated]);
+  }, [isAuthenticated, authLoading]);
 
   const markAsRead = async (id) => {
     await api.put(`/notifications/${id}/read`);

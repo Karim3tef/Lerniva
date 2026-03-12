@@ -18,9 +18,7 @@ export default function Header() {
   const displayName = profile?.full_name || user?.user_metadata?.full_name || 'المستخدم';
 
   const handleLogout = async () => {
-    const { signOut } = await import('@/lib/auth');
-    await signOut();
-    logout();
+    await logout();
     setUserMenuOpen(false);
   };
 

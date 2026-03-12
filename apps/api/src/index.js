@@ -7,6 +7,8 @@ import { initSocket } from './realtime/socket.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
 import env from './config/env.js';
+import webhooksRoutes from './routes/webhooks.js';
+import routes from './routes/index.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -22,9 +24,8 @@ app.use(cors({
 }));
 app.use(cookieParser());
 
-// NOTE: Stripe webhook route uses express.raw() — mount BEFORE express.json()
-// This will be added when webhook routes are implemented
-// app.use('/api/webhooks/stripe', express.raw({ type: 'application/json' }));
+// Webhooks must receive raw body for signature verification.
+app.use('/api/webhooks', express.raw({ type: 'application/json' }), webhooksRoutes);
 
 // Body parsing
 app.use(express.json());
@@ -39,7 +40,6 @@ app.get('/health', (req, res) => {
 });
 
 // API routes
-import routes from './routes/index.js';
 app.use('/api', routes);
 
 // Error handler (must be last)

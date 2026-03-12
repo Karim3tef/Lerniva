@@ -22,7 +22,7 @@ export default function AdminUsersPage() {
 
   async function fetchUsers() {
     const data = await api.get('/admin/users');
-    setUsers(data || []);
+    setUsers(data?.users || data || []);
     setLoading(false);
   }
 

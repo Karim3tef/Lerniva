@@ -20,6 +20,8 @@ export default {
     apiKey: process.env.BUNNY_API_KEY,
     cdnHostname: process.env.BUNNY_CDN_HOSTNAME,
     webhookSecret: process.env.BUNNY_WEBHOOK_SECRET,
+    tokenAuthKey: process.env.BUNNY_TOKEN_AUTH_KEY,
+    playbackTokenTtl: parseInt(process.env.BUNNY_PLAYBACK_TOKEN_TTL || '21600', 10),
   },
 
   stripe: {
@@ -28,10 +30,15 @@ export default {
   },
 
   email: {
+    provider: process.env.EMAIL_PROVIDER || 'smtp',
     host: process.env.SMTP_HOST,
     port: process.env.SMTP_PORT || 587,
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
     from: process.env.EMAIL_FROM || 'Lerniva <noreply@lerniva.com>',
+    azureConnectionString: process.env.AZURE_COMMUNICATION_CONNECTION_STRING,
+    azureSenderAddress: process.env.AZURE_COMMUNICATION_SENDER_ADDRESS,
+    requireVerification: process.env.EMAIL_VERIFICATION_REQUIRED === 'true',
+    verificationTokenHours: parseInt(process.env.EMAIL_VERIFICATION_TOKEN_HOURS || '24', 10),
   },
 };

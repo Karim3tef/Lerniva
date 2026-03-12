@@ -5,14 +5,14 @@ import { api } from '@/lib/api';
 import useAuthStore from '@/store/authStore';
 
 export function useEnrollments() {
-  const { user, isAuthenticated } = useAuthStore();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuthStore();
   const [enrollments, setEnrollments] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    if (isAuthenticated) fetchEnrollments();
-  }, [isAuthenticated]);
+    if (!authLoading && isAuthenticated) fetchEnrollments();
+  }, [isAuthenticated, authLoading]);
 
   const fetchEnrollments = async () => {
     setIsLoading(true);

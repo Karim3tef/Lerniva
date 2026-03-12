@@ -16,8 +16,10 @@ router.get('/course/:courseId', authenticate, getCourseLessons);
 router.get('/:id/watch', authenticate, watchLesson);
 
 // Teacher routes
+router.post('/', authenticate, requireRole('teacher'), createLesson);
 router.post('/course/:courseId', authenticate, requireRole('teacher'), createLesson);
 router.put('/:id', authenticate, requireRole('teacher'), updateLesson);
+router.patch('/:id', authenticate, requireRole('teacher'), updateLesson);
 router.delete('/:id', authenticate, requireRole('teacher'), deleteLesson);
 router.patch('/reorder', authenticate, requireRole('teacher'), reorderLessons);
 

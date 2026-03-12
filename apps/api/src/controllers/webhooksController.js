@@ -28,32 +28,13 @@ export async function handleStripeWebhook(req, res, next) {
       }
 
       const course = courseResult.rows[0];
-      const amount = parseFloat(course.price);
+      const amount = Number(session.amount_total || 0) / 100;
+      const currency = (session.currency || 'egp').toLowerCase();
 
       // Calculate platform commission (e.g., 20%)
       const platformCommission = 0.20;
       const platformAmount = amount * platformCommission;
       const teacherAmount = amount - platformAmount;
-
-      // Create payment record
-      const paymentQuery = `
-        INSERT INTO payments (
-          student_id, course_id, amount, teacher_amount,
-          platform_amount, status, stripe_session_id, stripe_payment_intent_id
-        )
-        VALUES ($1, $2, $3, $4, $5, 'completed', $6, $7)
-        RETURNING id
-      `;
-
-      const paymentResult = await pool.query(paymentQuery, [
-        studentId,
-        courseId,
-        amount,
-        teacherAmount,
-        platformAmount,
-        session.id,
-        session.payment_intent,
-      ]);
 
       // Enroll student in course
       const enrollmentQuery = `
@@ -62,6 +43,34 @@ export async function handleStripeWebhook(req, res, next) {
         ON CONFLICT (course_id, student_id) DO NOTHING
       `;
       await pool.query(enrollmentQuery, [courseId, studentId]);
+
+      // Create payment record (non-blocking for enrollment access)
+      let paymentId = 'not_recorded';
+      try {
+        const paymentQuery = `
+          INSERT INTO payments (
+            student_id, course_id, amount, teacher_amount, platform_amount,
+            currency, status, stripe_session_id, stripe_payment_intent_id, paid_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, 'completed', $7, $8, NOW())
+          ON CONFLICT (stripe_session_id) DO NOTHING
+          RETURNING id
+        `;
+
+        const paymentResult = await pool.query(paymentQuery, [
+          studentId,
+          courseId,
+          amount,
+          teacherAmount,
+          platformAmount,
+          currency,
+          session.id,
+          session.payment_intent,
+        ]);
+        paymentId = paymentResult.rows[0]?.id || 'existing_payment';
+      } catch (paymentErr) {
+        console.error('Webhook payment insert failed:', paymentErr.message);
+      }
 
       // Create notification for student
       await notificationService.create({
@@ -81,7 +90,7 @@ export async function handleStripeWebhook(req, res, next) {
         link: `/teacher/courses/${courseId}`,
       });
 
-      console.log('Payment processed successfully:', paymentResult.rows[0].id);
+      console.log('Payment processed successfully:', paymentId);
     }
 
     res.json({ received: true });
@@ -112,7 +121,7 @@ export async function handleBunnyWebhook(req, res, next) {
       // Update lesson with playback URL
       const updateQuery = `
         UPDATE lessons
-        SET bunny_playback_url = $1, updated_at = NOW()
+        SET bunny_playback_url = $1
         WHERE bunny_video_id = $2
         RETURNING id, course_id
       `;

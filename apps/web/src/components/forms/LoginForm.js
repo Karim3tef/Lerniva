@@ -28,8 +28,8 @@ export default function LoginForm() {
       if (role === 'admin') router.push('/admin/dashboard');
       else if (role === 'teacher') router.push('/teacher/dashboard');
       else router.push('/student/dashboard');
-    } catch {
-      setServerError('البريد الإلكتروني أو كلمة المرور غير صحيحة');
+    } catch (error) {
+      setServerError(error?.message || 'البريد الإلكتروني أو كلمة المرور غير صحيحة');
     }
   };
 
@@ -45,6 +45,7 @@ export default function LoginForm() {
         label="البريد الإلكتروني"
         type="email"
         placeholder="example@email.com"
+        autoComplete="email"
         leftIcon={<Mail size={18} />}
         error={errors.email?.message}
         required
@@ -55,6 +56,7 @@ export default function LoginForm() {
         label="كلمة المرور"
         type="password"
         placeholder="أدخل كلمة المرور"
+        autoComplete="current-password"
         leftIcon={<Lock size={18} />}
         error={errors.password?.message}
         required

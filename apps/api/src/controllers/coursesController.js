@@ -1,5 +1,27 @@
 import pool from '../db/pool.js';
 
+function slugify(value) {
+  return String(value || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .slice(0, 120);
+}
+
+// GET /api/courses/categories - List categories
+export async function listCategories(req, res, next) {
+  try {
+    const result = await pool.query(
+      'SELECT id, name, slug, created_at FROM categories ORDER BY name ASC'
+    );
+    res.json(result.rows);
+  } catch (error) {
+    next(error);
+  }
+}
+
 // GET /api/courses - List published and approved courses
 export async function listCourses(req, res, next) {
   try {
@@ -8,8 +30,8 @@ export async function listCourses(req, res, next) {
 
     let query = `
       SELECT c.*,
-        u.name as teacher_name,
-        u.avatar as teacher_avatar,
+        u.full_name as teacher_name,
+        u.avatar_url as teacher_avatar,
         cat.name as category_name,
         COUNT(DISTINCT e.id) as students_count,
         COALESCE(AVG(r.rating), 0) as avg_rating,
@@ -19,7 +41,7 @@ export async function listCourses(req, res, next) {
       LEFT JOIN categories cat ON c.category_id = cat.id
       LEFT JOIN enrollments e ON c.id = e.course_id
       LEFT JOIN reviews r ON c.id = r.course_id
-      WHERE c.is_published = true AND c.approval_status = 'approved'
+      WHERE c.is_published = true AND c.is_approved = true
     `;
 
     const params = [];
@@ -43,7 +65,7 @@ export async function listCourses(req, res, next) {
       paramIndex++;
     }
 
-    query += ` GROUP BY c.id, u.name, u.avatar, cat.name`;
+    query += ` GROUP BY c.id, u.full_name, u.avatar_url, cat.name`;
     query += ` ORDER BY c.created_at DESC`;
     query += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
     params.push(limit, offset);
@@ -54,7 +76,7 @@ export async function listCourses(req, res, next) {
     let countQuery = `
       SELECT COUNT(DISTINCT c.id) as total
       FROM courses c
-      WHERE c.is_published = true AND c.approval_status = 'approved'
+      WHERE c.is_published = true AND c.is_approved = true
     `;
     const countParams = [];
     let countParamIndex = 1;
@@ -100,8 +122,8 @@ export async function getCourse(req, res, next) {
 
     const courseQuery = `
       SELECT c.*,
-        u.name as teacher_name,
-        u.avatar as teacher_avatar,
+        u.full_name as teacher_name,
+        u.avatar_url as teacher_avatar,
         u.bio as teacher_bio,
         cat.name as category_name,
         COUNT(DISTINCT e.id) as students_count,
@@ -113,7 +135,7 @@ export async function getCourse(req, res, next) {
       LEFT JOIN enrollments e ON c.id = e.course_id
       LEFT JOIN reviews r ON c.id = r.course_id
       WHERE c.id = $1
-      GROUP BY c.id, u.name, u.avatar, u.bio, cat.name
+      GROUP BY c.id, u.full_name, u.avatar_url, u.bio, cat.name
     `;
 
     const courseResult = await pool.query(courseQuery, [id]);
@@ -126,18 +148,18 @@ export async function getCourse(req, res, next) {
 
     // Get lessons preview (title, order, duration only for non-enrolled)
     const lessonsQuery = `
-      SELECT id, title, lesson_order, duration, is_free
+      SELECT id, title, order_number, duration, is_preview
       FROM lessons
       WHERE course_id = $1
-      ORDER BY lesson_order ASC
+      ORDER BY order_number ASC
     `;
     const lessonsResult = await pool.query(lessonsQuery, [id]);
 
     // Get recent reviews
     const reviewsQuery = `
-      SELECT r.*, u.name as user_name, u.avatar as user_avatar
+      SELECT r.*, u.full_name as user_name, u.avatar_url as user_avatar
       FROM reviews r
-      JOIN users u ON r.user_id = u.id
+      JOIN users u ON r.student_id = u.id
       WHERE r.course_id = $1
       ORDER BY r.created_at DESC
       LIMIT 5
@@ -162,33 +184,40 @@ export async function createCourse(req, res, next) {
       title,
       description,
       category_id,
+      category,
       level,
       price,
       thumbnail,
-      what_you_will_learn,
-      requirements,
+      thumbnail_url,
+      is_published,
     } = req.body;
+
+    const categoryId = category_id || category || null;
+    const thumbnailUrl = thumbnail_url || thumbnail || null;
+    const slugBase = slugify(title);
+    const slug = `${slugBase}-${Date.now()}`;
+
+    const shouldPublish = is_published === true;
 
     const query = `
       INSERT INTO courses (
-        teacher_id, title, description, category_id, level,
-        price, thumbnail, what_you_will_learn, requirements,
-        is_published, approval_status
+        teacher_id, title, slug, description, category_id, level,
+        price, thumbnail_url, is_published, is_approved
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false, 'pending')
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false)
       RETURNING *
     `;
 
     const result = await pool.query(query, [
       teacherId,
       title,
+      slug,
       description,
-      category_id,
+      categoryId,
       level,
       price,
-      thumbnail,
-      what_you_will_learn,
-      requirements,
+      thumbnailUrl,
+      shouldPublish,
     ]);
 
     res.status(201).json(result.rows[0]);
@@ -206,12 +235,14 @@ export async function updateCourse(req, res, next) {
       title,
       description,
       category_id,
+      category,
       level,
       price,
       thumbnail,
-      what_you_will_learn,
-      requirements,
+      thumbnail_url,
     } = req.body;
+    const categoryId = category_id || category || null;
+    const thumbnailUrl = thumbnail_url || thumbnail || null;
 
     // Check ownership
     const checkQuery = 'SELECT teacher_id FROM courses WHERE id = $1';
@@ -228,21 +259,18 @@ export async function updateCourse(req, res, next) {
     const updateQuery = `
       UPDATE courses
       SET title = $1, description = $2, category_id = $3, level = $4,
-          price = $5, thumbnail = $6, what_you_will_learn = $7,
-          requirements = $8, updated_at = NOW()
-      WHERE id = $9
+          price = $5, thumbnail_url = $6, updated_at = NOW()
+      WHERE id = $7
       RETURNING *
     `;
 
     const result = await pool.query(updateQuery, [
       title,
       description,
-      category_id,
+      categoryId,
       level,
       price,
-      thumbnail,
-      what_you_will_learn,
-      requirements,
+      thumbnailUrl,
       id,
     ]);
 

@@ -3,12 +3,14 @@ import {
   getUsers,
   updateUserStatus,
   getPendingCourses,
+  getAllCourses,
   approveCourse,
   rejectCourse,
   getAllPayments,
   processRefund,
   getPlatformStats,
   getAuditLogs,
+  sendAnnouncementEmail,
 } from '../controllers/adminController.js';
 import { authenticate, requireRole } from '../middleware/auth.js';
 
@@ -23,12 +25,14 @@ router.patch('/users/:id/status', updateUserStatus);
 
 // Course management
 router.get('/courses/pending', getPendingCourses);
+router.get('/courses', getAllCourses);
 router.patch('/courses/:id/approve', approveCourse);
 router.patch('/courses/:id/reject', rejectCourse);
 
 // Payment management
 router.get('/payments', getAllPayments);
 router.post('/refund/:paymentId', processRefund);
+router.post('/announcements/email', sendAnnouncementEmail);
 
 // Statistics and logs
 router.get('/stats', getPlatformStats);

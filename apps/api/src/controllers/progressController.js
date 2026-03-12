@@ -18,8 +18,8 @@ export async function saveProgress(req, res, next) {
 
     // Upsert progress
     const query = `
-      INSERT INTO lesson_progress (lesson_id, student_id, watched_seconds, completed)
-      VALUES ($1, $2, $3, $4)
+      INSERT INTO lesson_progress (lesson_id, student_id, course_id, watched_seconds, completed)
+      VALUES ($1, $2, $3, $4, $5)
       ON CONFLICT (lesson_id, student_id)
       DO UPDATE SET
         watched_seconds = GREATEST(lesson_progress.watched_seconds, EXCLUDED.watched_seconds),
@@ -28,7 +28,7 @@ export async function saveProgress(req, res, next) {
       RETURNING *
     `;
 
-    const result = await pool.query(query, [lessonId, studentId, watchedSeconds, completed]);
+    const result = await pool.query(query, [lessonId, studentId, courseId, watchedSeconds, completed]);
 
     // If lesson is now completed, check if course is complete
     if (completed) {
@@ -78,14 +78,14 @@ export async function getCourseProgress(req, res, next) {
     }
 
     const query = `
-      SELECT l.id as lesson_id, l.title, l.lesson_order,
+      SELECT l.id as lesson_id, l.title, l.order_number,
         COALESCE(lp.watched_seconds, 0) as watched_seconds,
         COALESCE(lp.completed, false) as completed,
         l.duration
       FROM lessons l
       LEFT JOIN lesson_progress lp ON l.id = lp.lesson_id AND lp.student_id = $2
       WHERE l.course_id = $1
-      ORDER BY l.lesson_order ASC
+      ORDER BY l.order_number ASC
     `;
 
     const result = await pool.query(query, [courseId, studentId]);
@@ -102,6 +102,85 @@ export async function getCourseProgress(req, res, next) {
         completed_lessons: completedLessons,
         progress_percentage: progressPercentage,
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// GET /api/progress/last-lesson/:courseId - Get next lesson for student
+export async function getLastLesson(req, res, next) {
+  try {
+    const { courseId } = req.params;
+    const studentId = req.user.id;
+
+    const enrollmentCheck = await pool.query(
+      'SELECT id FROM enrollments WHERE course_id = $1 AND student_id = $2',
+      [courseId, studentId]
+    );
+
+    if (enrollmentCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'غير مسجل في هذه الدورة' });
+    }
+
+    const nextLessonQuery = `
+      SELECT l.id as lesson_id
+      FROM lessons l
+      LEFT JOIN lesson_progress lp ON l.id = lp.lesson_id AND lp.student_id = $2
+      WHERE l.course_id = $1
+        AND COALESCE(lp.completed, false) = false
+      ORDER BY l.order_number ASC
+      LIMIT 1
+    `;
+    const nextLesson = await pool.query(nextLessonQuery, [courseId, studentId]);
+
+    if (nextLesson.rows.length > 0) {
+      return res.json({ lessonId: nextLesson.rows[0].lesson_id });
+    }
+
+    const firstLessonQuery = `
+      SELECT id as lesson_id
+      FROM lessons
+      WHERE course_id = $1
+      ORDER BY order_number ASC
+      LIMIT 1
+    `;
+    const firstLesson = await pool.query(firstLessonQuery, [courseId]);
+
+    if (firstLesson.rows.length === 0) {
+      return res.json({ lessonId: null });
+    }
+
+    res.json({ lessonId: firstLesson.rows[0].lesson_id });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// GET /api/progress/stats - Get student progress summary
+export async function getProgressStats(req, res, next) {
+  try {
+    const studentId = req.user.id;
+
+    const completedLessonsResult = await pool.query(
+      'SELECT COUNT(*)::int AS value FROM lesson_progress WHERE student_id = $1 AND completed = true',
+      [studentId]
+    );
+
+    const certCountResult = await pool.query(
+      'SELECT COUNT(*)::int AS value FROM certificates WHERE student_id = $1',
+      [studentId]
+    );
+
+    const learnHoursResult = await pool.query(
+      'SELECT COALESCE(SUM(watched_seconds), 0)::int AS value FROM lesson_progress WHERE student_id = $1',
+      [studentId]
+    );
+
+    res.json({
+      completedLessons: completedLessonsResult.rows[0]?.value || 0,
+      certCount: certCountResult.rows[0]?.value || 0,
+      learnHours: Math.round((learnHoursResult.rows[0]?.value || 0) / 3600),
     });
   } catch (error) {
     next(error);

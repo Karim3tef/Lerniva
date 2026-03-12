@@ -4,7 +4,7 @@ import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { CheckCircle, Lock, ChevronLeft, BookOpen, Play, Loader2 } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, setAccessToken } from '@/lib/api';
 import LessonProgressClient from '@/components/video/LessonProgressClient';
 
 export default function LessonPlayerPage({ params }) {
@@ -19,14 +19,19 @@ export default function LessonPlayerPage({ params }) {
   useEffect(() => {
     const fetchData = async () => {
       try {
+        const refreshData = await api.post('/auth/refresh').catch(() => null);
+        if (refreshData?.accessToken) {
+          setAccessToken(refreshData.accessToken);
+        }
+
         const [lessonData, lessonsData, enrollData, courseData] = await Promise.all([
           api.get(`/lessons/${lessonId}/watch`),
           api.get(`/lessons/course/${courseId}`),
-          api.get(`/enrollments/check/${courseId}`),
+          api.get(`/enrollments/${courseId}/check`),
           api.get(`/courses/${courseId}`),
         ]);
 
-        if (!enrollData?.enrolled) {
+        if (!enrollData?.is_enrolled) {
           router.push(`/checkout/${courseId}`);
           return;
         }
@@ -78,9 +83,9 @@ export default function LessonPlayerPage({ params }) {
 
         {/* Video Player */}
         <div className="flex-1 p-6">
-          {lesson.playback_url ? (
+          {lesson.bunny_playback_url ? (
             <LessonProgressClient
-              playbackUrl={lesson.playback_url}
+              playbackUrl={lesson.bunny_playback_url}
               lessonTitle={lesson.title}
               courseId={courseId}
               lessonId={lessonId}
@@ -117,7 +122,7 @@ export default function LessonPlayerPage({ params }) {
         <div className="flex-1 overflow-y-auto">
           {lessons.map((l, index) => {
             const isActive = l.id === lessonId;
-            const isCompleted = l.completed || false;
+            const isCompleted = l.user_completed || false;
             return (
               <Link
                 key={l.id}

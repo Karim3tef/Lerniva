@@ -1,5 +1,6 @@
 import pool from '../db/pool.js';
 import { stripeService } from '../services/stripeService.js';
+import { emailService } from '../services/emailService.js';
 
 // GET /api/admin/users - Get paginated user list
 export async function getUsers(req, res, next) {
@@ -7,7 +8,19 @@ export async function getUsers(req, res, next) {
     const { page = 1, limit = 20, role, status, search } = req.query;
     const offset = (page - 1) * limit;
 
-    let query = 'SELECT id, name, email, role, status, avatar, created_at FROM users WHERE 1=1';
+    let query = `
+      SELECT
+        id,
+        full_name,
+        email,
+        role,
+        avatar_url,
+        is_active,
+        CASE WHEN is_active THEN 'active' ELSE 'banned' END as status,
+        created_at
+      FROM users
+      WHERE 1=1
+    `;
     const params = [];
     let paramIndex = 1;
 
@@ -17,14 +30,16 @@ export async function getUsers(req, res, next) {
       paramIndex++;
     }
 
-    if (status) {
-      query += ` AND status = $${paramIndex}`;
-      params.push(status);
-      paramIndex++;
+    if (status === 'active') {
+      query += ` AND is_active = true`;
+    } else if (status === 'banned') {
+      query += ` AND is_active = false`;
+    } else if (status === 'pending') {
+      query += ` AND false`;
     }
 
     if (search) {
-      query += ` AND (name ILIKE $${paramIndex} OR email ILIKE $${paramIndex})`;
+      query += ` AND (full_name ILIKE $${paramIndex} OR email ILIKE $${paramIndex})`;
       params.push(`%${search}%`);
       paramIndex++;
     }
@@ -45,14 +60,16 @@ export async function getUsers(req, res, next) {
       countParamIndex++;
     }
 
-    if (status) {
-      countQuery += ` AND status = $${countParamIndex}`;
-      countParams.push(status);
-      countParamIndex++;
+    if (status === 'active') {
+      countQuery += ` AND is_active = true`;
+    } else if (status === 'banned') {
+      countQuery += ` AND is_active = false`;
+    } else if (status === 'pending') {
+      countQuery += ` AND false`;
     }
 
     if (search) {
-      countQuery += ` AND (name ILIKE $${countParamIndex} OR email ILIKE $${countParamIndex})`;
+      countQuery += ` AND (full_name ILIKE $${countParamIndex} OR email ILIKE $${countParamIndex})`;
       countParams.push(`%${search}%`);
     }
 
@@ -85,12 +102,12 @@ export async function updateUserStatus(req, res, next) {
 
     const query = `
       UPDATE users
-      SET status = $1, updated_at = NOW()
+      SET is_active = $1, updated_at = NOW()
       WHERE id = $2
-      RETURNING id, name, email, role, status
+      RETURNING id, full_name, email, role, is_active
     `;
 
-    const result = await pool.query(query, [status, id]);
+    const result = await pool.query(query, [status === 'active', id]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'المستخدم غير موجود' });
@@ -98,6 +115,7 @@ export async function updateUserStatus(req, res, next) {
 
     res.json({
       ...result.rows[0],
+      status: result.rows[0].is_active ? 'active' : 'banned',
       message: status === 'banned' ? 'تم حظر المستخدم' : 'تم تفعيل المستخدم',
     });
   } catch (error) {
@@ -110,7 +128,7 @@ export async function getPendingCourses(req, res, next) {
   try {
     const query = `
       SELECT c.*,
-        u.name as teacher_name,
+        u.full_name as teacher_name,
         u.email as teacher_email,
         cat.name as category_name,
         COUNT(l.id) as lessons_count
@@ -118,13 +136,39 @@ export async function getPendingCourses(req, res, next) {
       JOIN users u ON c.teacher_id = u.id
       LEFT JOIN categories cat ON c.category_id = cat.id
       LEFT JOIN lessons l ON c.id = l.course_id
-      WHERE c.approval_status = 'pending'
-      GROUP BY c.id, u.name, u.email, cat.name
+      WHERE c.is_published = true AND c.is_approved = false
+      GROUP BY c.id, u.full_name, u.email, cat.name
       ORDER BY c.created_at ASC
     `;
 
     const result = await pool.query(query);
 
+    res.json(result.rows);
+  } catch (error) {
+    next(error);
+  }
+}
+
+// GET /api/admin/courses - Get all courses for admin table
+export async function getAllCourses(req, res, next) {
+  try {
+    const query = `
+      SELECT c.*,
+        u.full_name as teacher_name,
+        u.email as teacher_email,
+        cat.name as category_name,
+        COUNT(DISTINCT l.id) as lessons_count,
+        COUNT(DISTINCT e.id) as enrollment_count
+      FROM courses c
+      JOIN users u ON c.teacher_id = u.id
+      LEFT JOIN categories cat ON c.category_id = cat.id
+      LEFT JOIN lessons l ON c.id = l.course_id
+      LEFT JOIN enrollments e ON c.id = e.course_id
+      GROUP BY c.id, u.full_name, u.email, cat.name
+      ORDER BY c.created_at DESC
+    `;
+
+    const result = await pool.query(query);
     res.json(result.rows);
   } catch (error) {
     next(error);
@@ -138,7 +182,7 @@ export async function approveCourse(req, res, next) {
 
     const query = `
       UPDATE courses
-      SET approval_status = 'approved', updated_at = NOW()
+      SET is_approved = true, rejection_reason = NULL, updated_at = NOW()
       WHERE id = $1
       RETURNING *
     `;
@@ -174,12 +218,12 @@ export async function rejectCourse(req, res, next) {
 
     const query = `
       UPDATE courses
-      SET approval_status = 'rejected', updated_at = NOW()
+      SET is_approved = false, is_published = false, rejection_reason = $2, updated_at = NOW()
       WHERE id = $1
       RETURNING *
     `;
 
-    const result = await pool.query(query, [id]);
+    const result = await pool.query(query, [id, reason || null]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'الدورة غير موجودة' });
@@ -211,9 +255,9 @@ export async function getAllPayments(req, res, next) {
     let query = `
       SELECT p.*,
         c.title as course_title,
-        s.name as student_name,
+        s.full_name as student_name,
         s.email as student_email,
-        t.name as teacher_name
+        t.full_name as teacher_name
       FROM payments p
       JOIN courses c ON p.course_id = c.id
       JOIN users s ON p.student_id = s.id
@@ -279,12 +323,17 @@ export async function processRefund(req, res, next) {
       return res.status(400).json({ error: 'تم استرداد هذه الدفعة بالفعل' });
     }
 
-    // Process Stripe refund
-    await stripeService.createRefund(payment.stripe_payment_intent_id);
+    // Process Stripe refund (support both new and legacy column names)
+    const paymentIntentId = payment.stripe_payment_intent_id || payment.stripe_payment_id;
+    if (!paymentIntentId) {
+      return res.status(400).json({ error: 'لا يوجد معرف دفع صالح للاسترداد' });
+    }
+
+    await stripeService.createRefund(paymentIntentId);
 
     // Update payment status
     await pool.query(
-      `UPDATE payments SET status = 'refunded', updated_at = NOW() WHERE id = $1`,
+      `UPDATE payments SET status = 'refunded' WHERE id = $1`,
       [paymentId]
     );
 
@@ -314,11 +363,11 @@ export async function getPlatformStats(req, res, next) {
       SELECT
         (SELECT COUNT(*) FROM users WHERE role = 'student') as total_students,
         (SELECT COUNT(*) FROM users WHERE role = 'teacher') as total_teachers,
-        (SELECT COUNT(*) FROM courses WHERE approval_status = 'approved') as total_courses,
-        (SELECT COUNT(*) FROM courses WHERE approval_status = 'pending') as pending_courses,
+        (SELECT COUNT(*) FROM courses WHERE is_approved = true) as total_courses,
+        (SELECT COUNT(*) FROM courses WHERE is_published = true AND is_approved = false) as pending_courses,
         (SELECT COUNT(*) FROM enrollments) as total_enrollments,
         (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status = 'completed') as total_revenue,
-        (SELECT COALESCE(SUM(platform_amount), 0) FROM payments WHERE status = 'completed') as platform_revenue,
+        (SELECT COALESCE(SUM(amount * 0.2), 0) FROM payments WHERE status = 'completed') as platform_revenue,
         (SELECT COUNT(*) FROM payments WHERE status = 'completed' AND created_at > NOW() - INTERVAL '30 days') as monthly_sales
     `;
 
@@ -326,13 +375,13 @@ export async function getPlatformStats(req, res, next) {
 
     // Get popular courses
     const popularCoursesQuery = `
-      SELECT c.id, c.title, c.thumbnail,
+      SELECT c.id, c.title, c.thumbnail_url,
         COUNT(e.id) as enrollments_count,
         COALESCE(AVG(r.rating), 0) as avg_rating
       FROM courses c
       LEFT JOIN enrollments e ON c.id = e.course_id
       LEFT JOIN reviews r ON c.id = r.course_id
-      WHERE c.approval_status = 'approved'
+      WHERE c.is_approved = true
       GROUP BY c.id
       ORDER BY enrollments_count DESC
       LIMIT 5
@@ -342,18 +391,57 @@ export async function getPlatformStats(req, res, next) {
 
     // Get recent activities
     const recentActivitiesQuery = `
-      SELECT 'enrollment' as type, e.enrolled_at as created_at,
-        u.name as user_name, c.title as course_title
+      SELECT 'enrollment' as type, e.purchased_at as created_at,
+        u.full_name as user_name, c.title as course_title
       FROM enrollments e
       JOIN users u ON e.student_id = u.id
       JOIN courses c ON e.course_id = c.id
-      ORDER BY e.enrolled_at DESC
+      ORDER BY e.purchased_at DESC
       LIMIT 10
     `;
 
     const recentActivities = await pool.query(recentActivitiesQuery);
 
+    const recentUsersQuery = `
+      SELECT
+        id,
+        full_name,
+        email,
+        role,
+        created_at,
+        CASE WHEN is_active THEN 'active' ELSE 'banned' END as status
+      FROM users
+      ORDER BY created_at DESC
+      LIMIT 10
+    `;
+    const recentUsers = await pool.query(recentUsersQuery);
+
+    const pendingWithdrawalsQuery = `
+      SELECT COUNT(*)::int as count FROM withdrawals WHERE status = 'pending'
+    `;
+    const pendingWithdrawals = await pool.query(pendingWithdrawalsQuery);
+
+    const pendingRefundsQuery = `
+      SELECT COUNT(*)::int as count FROM refunds WHERE status = 'pending'
+    `;
+    const pendingRefunds = await pool.query(pendingRefundsQuery);
+
+    const newUsersThisWeekQuery = `
+      SELECT COUNT(*)::int as count FROM users WHERE created_at > NOW() - INTERVAL '7 days'
+    `;
+    const newUsersThisWeek = await pool.query(newUsersThisWeekQuery);
+
     res.json({
+      userCount:
+        parseInt(result.rows[0].total_students || 0) +
+        parseInt(result.rows[0].total_teachers || 0),
+      courseCount: parseInt(result.rows[0].total_courses || 0),
+      totalRevenue: parseFloat(result.rows[0].total_revenue || 0),
+      recentUsers: recentUsers.rows,
+      pendingCount: parseInt(result.rows[0].pending_courses || 0),
+      pendingWithdrawals: pendingWithdrawals.rows[0].count,
+      pendingRefunds: pendingRefunds.rows[0].count,
+      newUsersThisWeek: newUsersThisWeek.rows[0].count,
       stats: result.rows[0],
       popular_courses: popularCourses.rows,
       recent_activities: recentActivities.rows,
@@ -371,7 +459,7 @@ export async function getAuditLogs(req, res, next) {
 
     let query = `
       SELECT al.*,
-        u.name as user_name,
+        u.full_name as user_name,
         u.email as user_email
       FROM audit_logs al
       LEFT JOIN users u ON al.user_id = u.id
@@ -399,6 +487,71 @@ export async function getAuditLogs(req, res, next) {
     const result = await pool.query(query, params);
 
     res.json(result.rows);
+  } catch (error) {
+    next(error);
+  }
+}
+
+// POST /api/admin/announcements/email - Send email announcement to users
+export async function sendAnnouncementEmail(req, res, next) {
+  try {
+    if (!emailService.isConfigured()) {
+      return res.status(503).json({ error: 'خدمة البريد غير مهيأة' });
+    }
+
+    const { subject, html, text, role = 'all', limit = 200 } = req.body || {};
+    if (!subject || (!html && !text)) {
+      return res.status(400).json({ error: 'العنوان والمحتوى مطلوبان' });
+    }
+
+    if (!['all', 'student', 'teacher', 'admin'].includes(role)) {
+      return res.status(400).json({ error: 'الدور غير صالح' });
+    }
+
+    const cappedLimit = Math.min(Number(limit) || 200, 2000);
+    const params = [cappedLimit];
+    let roleFilter = '';
+    if (role !== 'all') {
+      params.push(role);
+      roleFilter = 'AND role = $2';
+    }
+
+    const recipientsResult = await pool.query(
+      `SELECT id, full_name, email
+       FROM users
+       WHERE is_active = true
+         AND email_verified = true
+         ${roleFilter}
+       ORDER BY created_at DESC
+       LIMIT $1`,
+      params
+    );
+
+    const recipients = recipientsResult.rows;
+    if (recipients.length === 0) {
+      return res.status(404).json({ error: 'لا يوجد مستلمون مطابقون' });
+    }
+
+    const sendResults = await Promise.allSettled(
+      recipients.map((user) =>
+        emailService.sendAnnouncement(
+          user.email,
+          subject,
+          html || `<p>${text}</p>`,
+          text || subject
+        )
+      )
+    );
+
+    const sent = sendResults.filter((result) => result.status === 'fulfilled').length;
+    const failed = sendResults.length - sent;
+
+    res.json({
+      message: 'تم تنفيذ إرسال الإعلان',
+      total: recipients.length,
+      sent,
+      failed,
+    });
   } catch (error) {
     next(error);
   }

@@ -61,4 +61,9 @@ export const stripeService = {
   async getPaymentIntent(paymentIntentId) {
     return await stripe.paymentIntents.retrieve(paymentIntentId);
   },
+
+  // Get checkout session details
+  async getCheckoutSession(sessionId) {
+    return await stripe.checkout.sessions.retrieve(sessionId);
+  },
 };

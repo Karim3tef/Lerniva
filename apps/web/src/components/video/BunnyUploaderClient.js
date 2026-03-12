@@ -12,12 +12,13 @@ export default function BunnyUploaderClient({ lessonId, onUploadComplete }) {
     setUploading(true);
     setError('');
     try {
-      const { videoId, uploadUrl } = await api.post('/upload/video', {
+      const { videoId, uploadUrl, uploadHeaders } = await api.post('/upload/video', {
         lessonId,
         title: file.name,
       });
       const upload = new tus.Upload(file, {
         endpoint: uploadUrl,
+        headers: uploadHeaders,
         retryDelays: [0, 3000, 5000, 10000],
         metadata: { filename: file.name, filetype: file.type },
         onProgress: (bytesUploaded, bytesTotal) => {
@@ -29,7 +30,7 @@ export default function BunnyUploaderClient({ lessonId, onUploadComplete }) {
         },
         onError: (err) => {
           console.error('Upload error:', err);
-          setError('فشل رفع الفيديو. حاول مجدداً.');
+          setError(`فشل رفع الفيديو: ${err?.message || 'خطأ غير معروف'}`);
           setUploading(false);
         },
       });

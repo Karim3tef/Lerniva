@@ -37,6 +37,7 @@ lerniva/
 │   │   │   ├── db/             # PostgreSQL pool & queries
 │   │   │   ├── realtime/       # Socket.io + PG LISTEN/NOTIFY
 │   │   │   └── index.js        # Express entry point
+│   │   ├── .env.example        # Backend env template
 │   │   └── package.json
 │   │
 │   └── web/                    # Next.js 16 frontend
@@ -46,6 +47,7 @@ lerniva/
 │       │   ├── lib/            # API client, Socket.io client
 │       │   ├── hooks/          # useAuth, useCourses, etc.
 │       │   └── store/          # Zustand stores
+│       ├── .env.example        # Frontend env template
 │       └── package.json
 │
 ├── database/
@@ -107,6 +109,31 @@ npm run dev:api   # Runs on http://localhost:4000
 npm run dev:web   # Runs on http://localhost:3000
 ```
 
+## 🐳 Docker Setup
+
+### Run Full Stack (Web + API + PostgreSQL)
+
+```bash
+docker compose up --build
+```
+
+Services:
+- Web: `http://localhost:3000`
+- API: `http://localhost:4000`
+- PostgreSQL: `localhost:5433` (db: `lerniva`, user: `postgres`, password: `postgres`)
+
+### Stop Containers
+
+```bash
+docker compose down
+```
+
+### Remove Containers + Volumes
+
+```bash
+docker compose down -v
+```
+
 ## 📚 API Documentation
 
 ### Base URL
@@ -135,7 +162,7 @@ Refresh tokens are stored as httpOnly cookies.
 - `POST /api/auth/forgot-password` - Request password reset
 - `POST /api/auth/reset-password` - Reset password
 
-#### Courses (TBD)
+#### Courses
 - `GET /api/courses` - List courses
 - `GET /api/courses/:id` - Get course details
 - `POST /api/courses` - Create course (teacher)
@@ -184,7 +211,7 @@ Powered by Stripe:
 
 ## 🚧 Migration Status
 
-**Current Phase**: Phase 3 - API Development (30% complete)
+**Current Phase**: Phase 6 - Testing & Verification
 
 See [MIGRATION_STATUS.md](./MIGRATION_STATUS.md) for detailed progress.
 
@@ -194,14 +221,15 @@ See [MIGRATION_STATUS.md](./MIGRATION_STATUS.md) for detailed progress.
 - ✅ Express API infrastructure
 - ✅ Auth system (complete)
 - ✅ Socket.io realtime
-- ✅ All backend services
+- ✅ All backend routes/controllers (60+ endpoints)
+- ✅ Frontend migration to API client (Supabase/Mux removed)
+- ✅ Frontend/backend split cleanup (legacy root Next.js app removed)
 
 **In Progress**:
-- 🔄 API routes and controllers (~45 endpoints remaining)
+- 🔄 End-to-end testing & verification
 
-**Not Started**:
-- ⏳ Frontend migration (API client, auth store, components)
-- ⏳ Testing & verification
+**Remaining**:
+- ⏳ Automated tests (API + frontend) and CI checks
 
 ## 🧪 Testing
 
@@ -245,4 +273,6 @@ Private - Lerniva Platform
 
 - Migration Guide: [MIGRATION_GUIDE.md](./MIGRATION_GUIDE.md)
 - Migration Status: [MIGRATION_STATUS.md](./MIGRATION_STATUS.md)
+- Azure ACS Email Setup: [AZURE_ACS_EMAIL_SETUP.md](./AZURE_ACS_EMAIL_SETUP.md)
+- Testmail Setup: [TESTMAIL_SETUP.md](./TESTMAIL_SETUP.md)
 - Original README: See git history for pre-migration documentation

@@ -1,13 +1,60 @@
 import pool from '../db/pool.js';
 import { jwtService } from '../services/jwtService.js';
-import { notificationService } from '../services/notificationService.js';
+import { emailService } from '../services/emailService.js';
+import env from '../config/env.js';
 import crypto from 'crypto';
+
+function getRefreshCookieOptions() {
+  const frontendUrl = process.env.FRONTEND_URL || '';
+  const isHttpsFrontend = frontendUrl.startsWith('https://');
+  return {
+    httpOnly: true,
+    secure: process.env.COOKIE_SECURE === 'true' || (process.env.NODE_ENV === 'production' && isHttpsFrontend),
+    // Stripe returns from a cross-site top-level navigation; Lax preserves cookie on that redirect.
+    sameSite: 'lax',
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+  };
+}
+
+function getRefreshCookieClearOptions() {
+  const frontendUrl = process.env.FRONTEND_URL || '';
+  const isHttpsFrontend = frontendUrl.startsWith('https://');
+  return {
+    httpOnly: true,
+    secure: process.env.COOKIE_SECURE === 'true' || (process.env.NODE_ENV === 'production' && isHttpsFrontend),
+    sameSite: 'lax',
+    path: '/',
+  };
+}
+
+async function createEmailVerificationToken(userId) {
+  const verificationToken = crypto.randomBytes(32).toString('hex');
+  const tokenHash = crypto.createHash('sha256').update(verificationToken).digest('hex');
+  const expiresAt = new Date(Date.now() + env.email.verificationTokenHours * 60 * 60 * 1000);
+
+  await pool.query(
+    `INSERT INTO email_verification_tokens (user_id, token_hash, expires_at)
+     VALUES ($1, $2, $3)`,
+    [userId, tokenHash, expiresAt]
+  );
+
+  return verificationToken;
+}
+
+async function sendVerificationEmail(user) {
+  if (!emailService.isConfigured()) return false;
+  const token = await createEmailVerificationToken(user.id);
+  const verifyUrl = `${env.frontendUrl}/verify-email?token=${token}`;
+  await emailService.sendEmailVerification(user.email, user.full_name, verifyUrl);
+  return true;
+}
 
 export const authController = {
   // POST /api/auth/register
   async register(req, res, next) {
     try {
       const { full_name, email, password, role = 'student' } = req.body;
+      const normalizedEmail = String(email || '').trim().toLowerCase();
 
       // Validate role
       if (!['student', 'teacher'].includes(role)) {
@@ -16,8 +63,8 @@ export const authController = {
 
       // Check if user exists
       const existing = await pool.query(
-        'SELECT id FROM users WHERE email = $1',
-        [email]
+        'SELECT id FROM users WHERE LOWER(email) = LOWER($1)',
+        [normalizedEmail]
       );
       if (existing.rows.length > 0) {
         return res.status(409).json({ error: 'البريد الإلكتروني مسجل بالفعل' });
@@ -27,26 +74,45 @@ export const authController = {
       const password_hash = await jwtService.hashPassword(password);
 
       // Create user
+      const emailVerified = !env.email.requireVerification;
       const result = await pool.query(
-        `INSERT INTO users (full_name, email, password_hash, role)
-         VALUES ($1, $2, $3, $4)
-         RETURNING id, full_name, email, role, avatar_url, created_at`,
-        [full_name, email, password_hash, role]
+        `INSERT INTO users (full_name, email, password_hash, role, email_verified, email_verified_at)
+         VALUES ($1, $2, $3, $4, $5, CASE WHEN $5 THEN NOW() ELSE NULL END)
+         RETURNING id, full_name, email, role, avatar_url, created_at, email_verified`,
+        [full_name, normalizedEmail, password_hash, role, emailVerified]
       );
 
       const user = result.rows[0];
+
+      let verificationEmailSent = false;
+      if (env.email.requireVerification) {
+        verificationEmailSent = await sendVerificationEmail(user);
+      }
+
+      if (env.email.requireVerification) {
+        return res.status(201).json({
+          message: verificationEmailSent
+            ? 'تم إنشاء الحساب. تحقق من بريدك الإلكتروني لتأكيد الحساب'
+            : 'تم إنشاء الحساب. تعذر إرسال بريد التأكيد حالياً',
+          emailVerificationRequired: true,
+          emailVerificationSent: verificationEmailSent,
+          user: {
+            id: user.id,
+            full_name: user.full_name,
+            email: user.email,
+            role: user.role,
+            avatar_url: user.avatar_url,
+            email_verified: user.email_verified,
+          },
+        });
+      }
 
       // Generate tokens
       const accessToken = jwtService.generateAccessToken(user);
       const refreshToken = await jwtService.generateRefreshToken(user.id);
 
       // Set refresh token cookie
-      res.cookie('refresh_token', refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-      });
+      res.cookie('refresh_token', refreshToken, getRefreshCookieOptions());
 
       res.status(201).json({
         accessToken,
@@ -56,6 +122,7 @@ export const authController = {
           email: user.email,
           role: user.role,
           avatar_url: user.avatar_url,
+          email_verified: user.email_verified,
         },
       });
     } catch (error) {
@@ -67,12 +134,13 @@ export const authController = {
   async login(req, res, next) {
     try {
       const { email, password } = req.body;
+      const normalizedEmail = String(email || '').trim().toLowerCase();
 
       // Find user
       const result = await pool.query(
-        `SELECT id, full_name, email, password_hash, role, avatar_url, is_active
-         FROM users WHERE email = $1`,
-        [email]
+        `SELECT id, full_name, email, password_hash, role, avatar_url, is_active, email_verified
+         FROM users WHERE LOWER(email) = LOWER($1)`,
+        [normalizedEmail]
       );
 
       if (result.rows.length === 0) {
@@ -86,6 +154,10 @@ export const authController = {
         return res.status(403).json({ error: 'الحساب معطل. يرجى الاتصال بالدعم' });
       }
 
+      if (env.email.requireVerification && !user.email_verified) {
+        return res.status(403).json({ error: 'يرجى تأكيد بريدك الإلكتروني قبل تسجيل الدخول' });
+      }
+
       // Verify password
       const isValid = await jwtService.comparePassword(password, user.password_hash);
       if (!isValid) {
@@ -97,12 +169,7 @@ export const authController = {
       const refreshToken = await jwtService.generateRefreshToken(user.id);
 
       // Set refresh token cookie
-      res.cookie('refresh_token', refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 30 * 24 * 60 * 60 * 1000,
-      });
+      res.cookie('refresh_token', refreshToken, getRefreshCookieOptions());
 
       res.json({
         accessToken,
@@ -112,6 +179,7 @@ export const authController = {
           email: user.email,
           role: user.role,
           avatar_url: user.avatar_url,
+          email_verified: user.email_verified,
         },
       });
     } catch (error) {
@@ -131,7 +199,7 @@ export const authController = {
       // Verify refresh token
       const tokenData = await jwtService.verifyRefreshToken(refreshToken);
       if (!tokenData) {
-        res.clearCookie('refresh_token');
+        res.clearCookie('refresh_token', getRefreshCookieClearOptions());
         return res.status(401).json({ error: 'انتهت صلاحية الجلسة' });
       }
 
@@ -162,7 +230,7 @@ export const authController = {
         await jwtService.revokeRefreshToken(refreshToken);
       }
 
-      res.clearCookie('refresh_token');
+      res.clearCookie('refresh_token', getRefreshCookieClearOptions());
       res.json({ message: 'تم تسجيل الخروج بنجاح' });
     } catch (error) {
       next(error);
@@ -214,11 +282,12 @@ export const authController = {
   async forgotPassword(req, res, next) {
     try {
       const { email } = req.body;
+      const normalizedEmail = String(email || '').trim().toLowerCase();
 
       // Find user
       const result = await pool.query(
-        'SELECT id, full_name, email FROM users WHERE email = $1',
-        [email]
+        'SELECT id, full_name, email FROM users WHERE LOWER(email) = LOWER($1)',
+        [normalizedEmail]
       );
 
       // Always return success to prevent email enumeration
@@ -241,9 +310,10 @@ export const authController = {
         [user.id, resetTokenHash, expiresAt]
       );
 
-      // TODO: Send email with reset link
-      // const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
-      // await emailService.sendPasswordReset(user.email, user.full_name, resetUrl);
+      if (emailService.isConfigured()) {
+        const resetUrl = `${env.frontendUrl}/reset-password?token=${resetToken}`;
+        await emailService.sendPasswordReset(user.email, user.full_name, resetUrl);
+      }
 
       res.json({ message: 'إذا كان البريد مسجلاً، ستتلقى رابط إعادة تعيين كلمة المرور' });
     } catch (error) {
@@ -290,6 +360,83 @@ export const authController = {
       );
 
       res.json({ message: 'تم تغيير كلمة المرور بنجاح' });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // GET /api/auth/verify-email?token=...
+  async verifyEmail(req, res, next) {
+    try {
+      const token = String(req.query.token || req.body?.token || '').trim();
+      if (!token) {
+        return res.status(400).json({ error: 'رمز التأكيد مطلوب' });
+      }
+
+      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+      const result = await pool.query(
+        `SELECT evt.id, evt.user_id
+         FROM email_verification_tokens evt
+         WHERE evt.token_hash = $1
+           AND evt.used_at IS NULL
+           AND evt.expires_at > NOW()`,
+        [tokenHash]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(400).json({ error: 'رابط التأكيد غير صالح أو منتهي الصلاحية' });
+      }
+
+      const verification = result.rows[0];
+      await pool.query(
+        `UPDATE users
+         SET email_verified = true, email_verified_at = NOW(), updated_at = NOW()
+         WHERE id = $1`,
+        [verification.user_id]
+      );
+      await pool.query(
+        `UPDATE email_verification_tokens
+         SET used_at = NOW()
+         WHERE id = $1`,
+        [verification.id]
+      );
+
+      res.json({ message: 'تم تأكيد البريد الإلكتروني بنجاح' });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // POST /api/auth/verify-email/request
+  async resendVerificationEmail(req, res, next) {
+    try {
+      const email = String(req.body?.email || '').trim().toLowerCase();
+      if (!email) {
+        return res.status(400).json({ error: 'البريد الإلكتروني مطلوب' });
+      }
+
+      const result = await pool.query(
+        `SELECT id, full_name, email, email_verified
+         FROM users
+         WHERE LOWER(email) = LOWER($1)`,
+        [email]
+      );
+
+      if (result.rows.length === 0) {
+        return res.json({ message: 'إذا كان البريد موجوداً، سيتم إرسال رسالة التأكيد' });
+      }
+
+      const user = result.rows[0];
+      if (user.email_verified) {
+        return res.json({ message: 'تم تأكيد هذا البريد بالفعل' });
+      }
+
+      if (!emailService.isConfigured()) {
+        return res.status(503).json({ error: 'خدمة البريد غير مهيأة' });
+      }
+
+      await sendVerificationEmail(user);
+      res.json({ message: 'تم إرسال بريد التأكيد' });
     } catch (error) {
       next(error);
     }

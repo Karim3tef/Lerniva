@@ -26,7 +26,7 @@ export default function AdminRefundsPage() {
 
   async function fetchRefundsList() {
     const data = await api.get('/admin/payments');
-    setRefunds(data || []);
+    setRefunds(data?.payments || data || []);
     setLoading(false);
   }
 

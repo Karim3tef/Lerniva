@@ -7,8 +7,10 @@ import Sidebar from '@/components/layout/Sidebar';
 import { STUDENT_NAVIGATION } from '@/constants';
 import { getLevelLabel, getLevelColor } from '@/lib/helpers';
 import { api } from '@/lib/api';
+import useAuthStore from '@/store/authStore';
 
 export default function MyCoursesPage() {
+  const { isAuthenticated, isLoading: authLoading } = useAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
@@ -17,30 +19,38 @@ export default function MyCoursesPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchEnrollments = async () => {
-      const data = await api.get('/enrollments/mine');
-      setEnrollments(data || []);
+    if (authLoading || !isAuthenticated) return;
 
-      // Fetch lesson links for each course
-      const links = {};
-      await Promise.all(
-        (data || []).map(async (enrollment) => {
-          const courseId = enrollment.course_id;
-          try {
-            const progressData = await api.get(`/progress/last-lesson/${courseId}`);
-            links[courseId] = progressData?.lessonId
-              ? `/learn/${courseId}/${progressData.lessonId}`
-              : null;
-          } catch {
-            links[courseId] = null;
-          }
-        })
-      );
-      setLessonLinks(links);
-      setLoading(false);
+    const fetchEnrollments = async () => {
+      try {
+        const data = await api.get('/enrollments/mine');
+        setEnrollments(data || []);
+
+        // Fetch lesson links for each course
+        const links = {};
+        await Promise.all(
+          (data || []).map(async (enrollment) => {
+            const courseId = enrollment.course_id;
+            try {
+              const progressData = await api.get(`/progress/last-lesson/${courseId}`);
+              links[courseId] = progressData?.lessonId
+                ? `/learn/${courseId}/${progressData.lessonId}`
+                : null;
+            } catch {
+              links[courseId] = null;
+            }
+          })
+        );
+        setLessonLinks(links);
+      } catch {
+        setEnrollments([]);
+        setLessonLinks({});
+      } finally {
+        setLoading(false);
+      }
     };
     fetchEnrollments();
-  }, []);
+  }, [isAuthenticated, authLoading]);
 
   const filtered = enrollments.filter((e) => {
     const progress = e.progress || 0;
@@ -49,8 +59,8 @@ export default function MyCoursesPage() {
       filter === 'in-progress' ? progress > 0 && progress < 100 :
       filter === 'completed' ? progress === 100 : true;
     const matchSearch = !search ||
-      (e.courses?.title || '').includes(search) ||
-      (e.courses?.users?.full_name || '').includes(search);
+      (e.course_title || '').includes(search) ||
+      (e.teacher_name || '').includes(search);
     return matchFilter && matchSearch;
   });
 
@@ -115,14 +125,13 @@ export default function MyCoursesPage() {
             /* Courses */
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
               {filtered.map((enrollment) => {
-                const course = enrollment.courses || {};
                 const progress = enrollment.progress || 0;
                 const link = lessonLinks[enrollment.course_id];
                 return (
                   <div key={enrollment.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
                     <div className="h-36 bg-gradient-to-br from-indigo-500 to-purple-600 relative flex items-center justify-center">
-                      {course.thumbnail_url ? (
-                        <img src={course.thumbnail_url} alt={course.title} className="w-full h-full object-cover" />
+                      {enrollment.course_thumbnail ? (
+                        <img src={enrollment.course_thumbnail} alt={enrollment.course_title} className="w-full h-full object-cover" />
                       ) : (
                         <span className="text-5xl opacity-40 select-none">📚</span>
                       )}
@@ -133,14 +142,14 @@ export default function MyCoursesPage() {
                       )}
                     </div>
                     <div className="p-5">
-                      {course.level && (
-                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${getLevelColor(course.level)}`}>
-                          {getLevelLabel(course.level)}
+                      {enrollment.course_level && (
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${getLevelColor(enrollment.course_level)}`}>
+                          {getLevelLabel(enrollment.course_level)}
                         </span>
                       )}
-                      <h3 className="font-bold text-gray-900 text-sm mt-2 mb-1 line-clamp-2">{course.title || '—'}</h3>
+                      <h3 className="font-bold text-gray-900 text-sm mt-2 mb-1 line-clamp-2">{enrollment.course_title || '—'}</h3>
                       <p className="text-xs text-gray-400 mb-3">
-                        {course.users?.full_name ? `المعلم: ${course.users.full_name}` : ''}
+                        {enrollment.teacher_name ? `المعلم: ${enrollment.teacher_name}` : ''}
                       </p>
 
                       {/* Progress */}

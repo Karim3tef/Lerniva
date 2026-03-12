@@ -30,21 +30,26 @@ export default function CheckoutPage({ params }) {
     setEnrolling(true);
     setError('');
     try {
-      const data = await api.post('/payments/checkout', { course_id: courseId });
-      if (data?.error) {
-        setError(data.error || 'حدث خطأ في التسجيل');
-        return;
-      }
-      if (data?.enrolled) {
+      const isFree = !course?.price || Number(course.price) === 0;
+      const data = isFree
+        ? await api.post('/enrollments', { courseId })
+        : await api.post('/payments/checkout', { courseId });
+
+      if (isFree) {
         router.push('/student/my-courses');
         return;
       }
+
       if (data?.url) {
         window.location.href = data.url;
       }
     } catch (err) {
       console.error('Enrollment error:', err);
-      setError('حدث خطأ. حاول مجدداً.');
+      if (err?.message?.includes('مسجل بالفعل')) {
+        router.push('/student/my-courses');
+        return;
+      }
+      setError(err?.message || 'حدث خطأ. حاول مجدداً.');
     } finally {
       setEnrolling(false);
     }

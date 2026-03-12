@@ -35,10 +35,12 @@ export async function uploadVideo(req, res, next) {
 
     // Return upload URL for TUS upload
     const uploadUrl = bunny.getUploadUrl(videoId);
+    const uploadHeaders = bunny.getTusAuth(videoId);
 
     res.json({
       videoId,
       uploadUrl,
+      uploadHeaders,
       message: 'تم إنشاء الفيديو، يمكنك الآن رفع الملف',
     });
   } catch (error) {
@@ -78,7 +80,7 @@ export async function uploadThumbnail(req, res, next) {
     const thumbnailUrl = file; // Assuming file is already a URL from client-side upload
 
     await pool.query(
-      'UPDATE courses SET thumbnail = $1 WHERE id = $2',
+      'UPDATE courses SET thumbnail_url = $1 WHERE id = $2',
       [thumbnailUrl, courseId]
     );
 

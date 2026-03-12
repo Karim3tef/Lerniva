@@ -1,15 +1,17 @@
 import express from 'express';
 import { authController } from '../controllers/authController.js';
 import { authenticate } from '../middleware/auth.js';
-import { authLimiter } from '../middleware/rateLimiter.js';
+import { authLimiter, authActionLimiter } from '../middleware/rateLimiter.js';
 
 const router = express.Router();
 
 // Public routes (with rate limiting)
-router.post('/register', authLimiter, authController.register);
+router.post('/register', authActionLimiter, authController.register);
 router.post('/login', authLimiter, authController.login);
-router.post('/forgot-password', authLimiter, authController.forgotPassword);
-router.post('/reset-password', authLimiter, authController.resetPassword);
+router.post('/forgot-password', authActionLimiter, authController.forgotPassword);
+router.post('/reset-password', authActionLimiter, authController.resetPassword);
+router.get('/verify-email', authActionLimiter, authController.verifyEmail);
+router.post('/verify-email/request', authActionLimiter, authController.resendVerificationEmail);
 
 // Refresh token (no auth middleware, uses cookie)
 router.post('/refresh', authController.refresh);

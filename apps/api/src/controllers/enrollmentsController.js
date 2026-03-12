@@ -9,10 +9,10 @@ export async function getMyEnrollments(req, res, next) {
       SELECT e.*,
         c.title as course_title,
         c.description as course_description,
-        c.thumbnail as course_thumbnail,
+        c.thumbnail_url as course_thumbnail,
         c.level as course_level,
-        u.name as teacher_name,
-        u.avatar as teacher_avatar,
+        u.full_name as teacher_name,
+        u.avatar_url as teacher_avatar,
         cat.name as category_name,
         COUNT(DISTINCT l.id) as total_lessons,
         COUNT(DISTINCT CASE WHEN lp.completed THEN lp.id END) as completed_lessons,
@@ -25,8 +25,8 @@ export async function getMyEnrollments(req, res, next) {
       LEFT JOIN lesson_progress lp ON l.id = lp.lesson_id AND lp.student_id = e.student_id
       LEFT JOIN reviews r ON c.id = r.course_id
       WHERE e.student_id = $1
-      GROUP BY e.id, c.id, u.name, u.avatar, cat.name
-      ORDER BY e.enrolled_at DESC
+      GROUP BY e.id, c.id, u.full_name, u.avatar_url, cat.name
+      ORDER BY e.purchased_at DESC
     `;
 
     const result = await pool.query(query, [studentId]);
@@ -41,11 +41,16 @@ export async function getMyEnrollments(req, res, next) {
 export async function enrollInCourse(req, res, next) {
   try {
     const studentId = req.user.id;
-    const { courseId } = req.body;
+    const { courseId, course_id } = req.body;
+    const targetCourseId = courseId || course_id;
+
+    if (!targetCourseId) {
+      return res.status(400).json({ error: 'courseId مطلوب' });
+    }
 
     // Check if course exists and is free
-    const courseQuery = 'SELECT id, price, title, is_published, approval_status FROM courses WHERE id = $1';
-    const courseResult = await pool.query(courseQuery, [courseId]);
+    const courseQuery = 'SELECT id, price, title, is_published, is_approved FROM courses WHERE id = $1';
+    const courseResult = await pool.query(courseQuery, [targetCourseId]);
 
     if (courseResult.rows.length === 0) {
       return res.status(404).json({ error: 'الدورة غير موجودة' });
@@ -53,7 +58,7 @@ export async function enrollInCourse(req, res, next) {
 
     const course = courseResult.rows[0];
 
-    if (!course.is_published || course.approval_status !== 'approved') {
+    if (!course.is_published || !course.is_approved) {
       return res.status(400).json({ error: 'الدورة غير متاحة للتسجيل' });
     }
 
@@ -64,7 +69,7 @@ export async function enrollInCourse(req, res, next) {
     // Check if already enrolled
     const enrollmentCheck = await pool.query(
       'SELECT id FROM enrollments WHERE course_id = $1 AND student_id = $2',
-      [courseId, studentId]
+      [targetCourseId, studentId]
     );
 
     if (enrollmentCheck.rows.length > 0) {
@@ -77,7 +82,7 @@ export async function enrollInCourse(req, res, next) {
       VALUES ($1, $2)
       RETURNING *
     `;
-    const result = await pool.query(insertQuery, [courseId, studentId]);
+    const result = await pool.query(insertQuery, [targetCourseId, studentId]);
 
     res.status(201).json({
       ...result.rows[0],

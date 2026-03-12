@@ -7,16 +7,28 @@ import { CheckCircle, BookOpen, Loader } from 'lucide-react';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import { api } from '@/lib/api';
+import useAuthStore from '@/store/authStore';
 
 function CheckoutSuccessContent() {
   const searchParams = useSearchParams();
   const sessionId = searchParams.get('session_id');
+  const { init } = useAuthStore();
   const [enrollment, setEnrollment] = useState(null);
+  const [needsLogin, setNeedsLogin] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchEnrollment = async () => {
       try {
+        await init();
+        if (!useAuthStore.getState().isAuthenticated) {
+          setNeedsLogin(true);
+          return;
+        }
+
+        if (sessionId) {
+          await api.post('/payments/confirm', { sessionId });
+        }
         const data = await api.get('/enrollments/mine');
         const latest = (data || [])[0] || null;
         setEnrollment(latest);
@@ -27,7 +39,7 @@ function CheckoutSuccessContent() {
       }
     };
     fetchEnrollment();
-  }, [sessionId]);
+  }, [sessionId, init]);
 
   return (
     <>
@@ -48,10 +60,10 @@ function CheckoutSuccessContent() {
                   : 'يمكنك الآن بدء التعلم'}
               </p>
               <p className="text-sm text-gray-400 mb-8">ابدأ رحلة التعلم الآن وحقق أهدافك</p>
-              <Link href="/student/my-courses">
+              <Link href={needsLogin ? `/login?redirect=${encodeURIComponent(`/checkout/success?session_id=${sessionId || ''}`)}` : '/student/my-courses'}>
                 <button className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl transition-colors flex items-center justify-center gap-2">
                   <BookOpen size={20} />
-                  ابدأ التعلم الآن
+                  {needsLogin ? 'تسجيل الدخول لإكمال التفعيل' : 'ابدأ التعلم الآن'}
                 </button>
               </Link>
               <Link href="/courses" className="block mt-3 text-sm text-indigo-600 hover:text-indigo-700 font-semibold">

@@ -26,16 +26,21 @@ export default function AdminCoursesPage() {
   }, []);
 
   async function fetchCourses() {
-    const data = await api.get('/admin/courses/pending');
-    const allCourses = await api.get('/admin/courses');
-    const courseList = allCourses || data || [];
-    const mapped = courseList.map((c) => ({
-      ...c,
-      teacher: c.teacher_name || c.users?.full_name || '—',
-      status: deriveStatus(c),
-    }));
-    setCourses(mapped);
-    setLoading(false);
+    try {
+      const data = await api.get('/admin/courses/pending');
+      const allCourses = await api.get('/admin/courses');
+      const courseList = allCourses || data || [];
+      const mapped = courseList.map((c) => ({
+        ...c,
+        teacher: c.teacher_name || c.users?.full_name || '—',
+        status: deriveStatus(c),
+      }));
+      setCourses(mapped);
+    } catch {
+      setCourses([]);
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function approveCourse(id) {

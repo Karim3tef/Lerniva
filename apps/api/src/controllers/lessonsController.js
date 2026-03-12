@@ -1,4 +1,5 @@
 import pool from '../db/pool.js';
+import { bunnyService as bunny } from '../services/bunnyService.js';
 
 // GET /api/lessons/course/:courseId - Get lessons for a course (enrolled or teacher)
 export async function getCourseLessons(req, res, next) {
@@ -7,7 +8,6 @@ export async function getCourseLessons(req, res, next) {
     const userId = req.user.id;
     const userRole = req.user.role;
 
-    // Check if user is the teacher or is enrolled
     const accessQuery = `
       SELECT
         (SELECT teacher_id FROM courses WHERE id = $1) as teacher_id,
@@ -15,14 +15,13 @@ export async function getCourseLessons(req, res, next) {
     `;
     const accessResult = await pool.query(accessQuery, [courseId, userId]);
 
-    const isTeacher = accessResult.rows[0].teacher_id === userId;
-    const isEnrolled = parseInt(accessResult.rows[0].is_enrolled) > 0;
+    const isTeacher = accessResult.rows[0]?.teacher_id === userId;
+    const isEnrolled = parseInt(accessResult.rows[0]?.is_enrolled || 0, 10) > 0;
 
     if (!isTeacher && !isEnrolled && userRole !== 'admin') {
       return res.status(403).json({ error: 'يجب التسجيل في الدورة أولاً' });
     }
 
-    // Get all lessons
     const query = `
       SELECT l.*,
         CASE WHEN lp.completed THEN true ELSE false END as user_completed,
@@ -30,7 +29,7 @@ export async function getCourseLessons(req, res, next) {
       FROM lessons l
       LEFT JOIN lesson_progress lp ON l.id = lp.lesson_id AND lp.student_id = $2
       WHERE l.course_id = $1
-      ORDER BY l.lesson_order ASC
+      ORDER BY l.order_number ASC
     `;
 
     const result = await pool.query(query, [courseId, userId]);
@@ -41,14 +40,28 @@ export async function getCourseLessons(req, res, next) {
   }
 }
 
-// POST /api/lessons/course/:courseId - Add lesson to course (Teacher owner only)
+// POST /api/lessons/course/:courseId OR /api/lessons - Add lesson to course (Teacher owner only)
 export async function createLesson(req, res, next) {
   try {
-    const { courseId } = req.params;
+    const courseId = req.params.courseId || req.body.course_id;
     const teacherId = req.user.id;
-    const { title, description, duration, is_free, lesson_order } = req.body;
+    const {
+      title,
+      duration,
+      is_preview,
+      is_free,
+      order_number,
+      lesson_order,
+    } = req.body;
 
-    // Check if user owns the course
+    if (!courseId) {
+      return res.status(400).json({ error: 'course_id مطلوب' });
+    }
+
+    if (!title || !String(title).trim()) {
+      return res.status(400).json({ error: 'عنوان الدرس مطلوب' });
+    }
+
     const checkQuery = 'SELECT teacher_id FROM courses WHERE id = $1';
     const checkResult = await pool.query(checkQuery, [courseId]);
 
@@ -60,27 +73,25 @@ export async function createLesson(req, res, next) {
       return res.status(403).json({ error: 'غير مسموح بإضافة دروس لهذه الدورة' });
     }
 
-    // Get next order if not provided
-    let finalOrder = lesson_order;
+    let finalOrder = order_number || lesson_order;
     if (!finalOrder) {
-      const orderQuery = 'SELECT COALESCE(MAX(lesson_order), 0) + 1 as next_order FROM lessons WHERE course_id = $1';
+      const orderQuery = 'SELECT COALESCE(MAX(order_number), 0) + 1 as next_order FROM lessons WHERE course_id = $1';
       const orderResult = await pool.query(orderQuery, [courseId]);
       finalOrder = orderResult.rows[0].next_order;
     }
 
     const insertQuery = `
-      INSERT INTO lessons (course_id, title, description, duration, is_free, lesson_order)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO lessons (course_id, title, duration, is_preview, order_number)
+      VALUES ($1, $2, $3, $4, $5)
       RETURNING *
     `;
 
     const result = await pool.query(insertQuery, [
       courseId,
       title,
-      description,
-      duration || 0,
-      is_free || false,
-      finalOrder,
+      Number(duration || 0),
+      is_preview === true || is_free === true,
+      Number(finalOrder),
     ]);
 
     res.status(201).json(result.rows[0]);
@@ -89,14 +100,20 @@ export async function createLesson(req, res, next) {
   }
 }
 
-// PUT /api/lessons/:id - Update lesson (Teacher owner only)
+// PUT/PATCH /api/lessons/:id - Update lesson (Teacher owner only)
 export async function updateLesson(req, res, next) {
   try {
     const { id } = req.params;
     const teacherId = req.user.id;
-    const { title, description, duration, is_free } = req.body;
+    const {
+      title,
+      duration,
+      is_preview,
+      is_free,
+      order_number,
+      lesson_order,
+    } = req.body;
 
-    // Check if user owns the course that this lesson belongs to
     const checkQuery = `
       SELECT c.teacher_id
       FROM lessons l
@@ -113,14 +130,29 @@ export async function updateLesson(req, res, next) {
       return res.status(403).json({ error: 'غير مسموح بتحديث هذا الدرس' });
     }
 
+    const previewValue =
+      is_preview === undefined && is_free === undefined
+        ? undefined
+        : is_preview === true || is_free === true;
+
     const updateQuery = `
       UPDATE lessons
-      SET title = $1, description = $2, duration = $3, is_free = $4, updated_at = NOW()
+      SET
+        title = COALESCE($1, title),
+        duration = COALESCE($2, duration),
+        is_preview = COALESCE($3, is_preview),
+        order_number = COALESCE($4, order_number)
       WHERE id = $5
       RETURNING *
     `;
 
-    const result = await pool.query(updateQuery, [title, description, duration, is_free, id]);
+    const result = await pool.query(updateQuery, [
+      title,
+      duration === undefined ? undefined : Number(duration),
+      previewValue,
+      order_number || lesson_order,
+      id,
+    ]);
 
     res.json(result.rows[0]);
   } catch (error) {
@@ -134,7 +166,6 @@ export async function deleteLesson(req, res, next) {
     const { id } = req.params;
     const teacherId = req.user.id;
 
-    // Check if user owns the course that this lesson belongs to
     const checkQuery = `
       SELECT c.teacher_id, l.bunny_video_id
       FROM lessons l
@@ -151,12 +182,6 @@ export async function deleteLesson(req, res, next) {
       return res.status(403).json({ error: 'غير مسموح بحذف هذا الدرس' });
     }
 
-    // TODO: Delete video from Bunny if exists
-    // const bunnyVideoId = checkResult.rows[0].bunny_video_id;
-    // if (bunnyVideoId) {
-    //   await bunny.deleteVideo(bunnyVideoId);
-    // }
-
     await pool.query('DELETE FROM lessons WHERE id = $1', [id]);
 
     res.json({ message: 'تم حذف الدرس بنجاح' });
@@ -165,13 +190,12 @@ export async function deleteLesson(req, res, next) {
   }
 }
 
-// PATCH /api/lessons/reorder - Reorder lessons (Teacher owner only, used with dnd-kit)
+// PATCH /api/lessons/reorder - Reorder lessons (Teacher owner only)
 export async function reorderLessons(req, res, next) {
   try {
     const teacherId = req.user.id;
-    const { courseId, lessons } = req.body; // lessons: [{ id, order }, ...]
+    const { courseId, lessons } = req.body;
 
-    // Check if user owns the course
     const checkQuery = 'SELECT teacher_id FROM courses WHERE id = $1';
     const checkResult = await pool.query(checkQuery, [courseId]);
 
@@ -183,15 +207,14 @@ export async function reorderLessons(req, res, next) {
       return res.status(403).json({ error: 'غير مسموح بإعادة ترتيب دروس هذه الدورة' });
     }
 
-    // Update all lesson orders in a transaction
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
 
-      for (const lesson of lessons) {
+      for (const lesson of lessons || []) {
         await client.query(
-          'UPDATE lessons SET lesson_order = $1 WHERE id = $2 AND course_id = $3',
-          [lesson.order, lesson.id, courseId]
+          'UPDATE lessons SET order_number = $1 WHERE id = $2 AND course_id = $3',
+          [lesson.order ?? lesson.order_number, lesson.id, courseId]
         );
       }
 
@@ -214,7 +237,6 @@ export async function watchLesson(req, res, next) {
     const { id } = req.params;
     const userId = req.user.id;
 
-    // Get lesson and check enrollment
     const query = `
       SELECT l.*,
         c.teacher_id,
@@ -231,15 +253,31 @@ export async function watchLesson(req, res, next) {
 
     const lesson = result.rows[0];
     const isTeacher = lesson.teacher_id === userId;
-    const isEnrolled = parseInt(lesson.is_enrolled) > 0;
-    const isFree = lesson.is_free;
+    const isEnrolled = parseInt(lesson.is_enrolled, 10) > 0;
+    const isFree = lesson.is_preview;
 
-    // Check access: must be teacher, enrolled, or lesson is free
     if (!isTeacher && !isEnrolled && !isFree) {
       return res.status(403).json({ error: 'يجب التسجيل في الدورة لمشاهدة هذا الدرس' });
     }
 
-    // Get user progress for this lesson
+    // Fallback: if webhook did not update playback URL yet, try resolving it from Bunny API.
+    if (!lesson.bunny_playback_url && lesson.bunny_video_id) {
+      const status = await bunny.getVideoStatus(lesson.bunny_video_id);
+      if (status === 4) {
+        const playbackUrl = bunny.getPlaybackUrl(lesson.bunny_video_id, { signed: false });
+        lesson.bunny_playback_url = playbackUrl;
+        await pool.query(
+          'UPDATE lessons SET bunny_playback_url = $1 WHERE id = $2',
+          [playbackUrl, lesson.id]
+        );
+      }
+    }
+
+    // Serve signed CDN URL when token auth is enabled.
+    if (lesson.bunny_video_id && lesson.bunny_playback_url) {
+      lesson.bunny_playback_url = bunny.getPlaybackUrl(lesson.bunny_video_id, { signed: true });
+    }
+
     const progressQuery = `
       SELECT watched_seconds, completed
       FROM lesson_progress

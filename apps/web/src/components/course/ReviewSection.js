@@ -45,12 +45,12 @@ export default function ReviewSection({ courseId }) {
     const fetchData = async () => {
       const [reviewsData, enrollmentData] = await Promise.all([
         api.get(`/reviews/course/${courseId}`),
-        api.get(`/enrollments/check/${courseId}`).catch(() => null),
+        api.get(`/enrollments/${courseId}/check`).catch(() => null),
       ]);
 
       const reviews = reviewsData || [];
       setReviews(reviews);
-      setMyEnrollment(enrollmentData?.enrolled ? { id: courseId } : null);
+      setMyEnrollment(enrollmentData?.is_enrolled ? { id: courseId } : null);
 
       const existing = reviews.find((r) => r.is_mine);
       if (existing) {

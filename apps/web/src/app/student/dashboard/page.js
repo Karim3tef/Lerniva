@@ -9,10 +9,12 @@ import CourseCard from '@/components/course/CourseCard';
 import NotificationBell from '@/components/notifications/NotificationBell';
 import { STUDENT_NAVIGATION } from '@/constants';
 import { api } from '@/lib/api';
+import useAuthStore from '@/store/authStore';
 
 const EMOJIS = ['💻', '📐', '🤖', '⚛️', '📊', '⚙️', '🧪', '🧬'];
 
 export default function StudentDashboardPage() {
+  const { isAuthenticated, isLoading: authLoading } = useAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [enrollments, setEnrollments] = useState([]);
   const [certCount, setCertCount] = useState(0);
@@ -22,6 +24,8 @@ export default function StudentDashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (authLoading || !isAuthenticated) return;
+
     const fetchData = async () => {
       try {
         const [enrollData, statsData, recData] = await Promise.all([
@@ -42,7 +46,7 @@ export default function StudentDashboardPage() {
       }
     };
     fetchData();
-  }, []);
+  }, [isAuthenticated, authLoading]);
 
   // For each enrollment, fetch the last watched lesson or first lesson
   const [lessonLinks, setLessonLinks] = useState({});
@@ -148,7 +152,7 @@ export default function StudentDashboardPage() {
                           </div>
                           <div className="flex-1 min-w-0">
                             <h3 className="font-semibold text-gray-900 text-sm truncate">
-                              {enrollment.courses?.title || '—'}
+                              {enrollment.course_title || '—'}
                             </h3>
                             <div className="flex items-center gap-2 mt-1.5">
                               <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
@@ -203,4 +207,3 @@ export default function StudentDashboardPage() {
     </div>
   );
 }
-

@@ -12,25 +12,50 @@ import useAuthStore from '@/store/authStore';
 
 export default function CourseDetailPage({ params }) {
   const { id } = use(params);
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, isLoading: authLoading } = useAuthStore();
 
   const [course, setCourse] = useState(null);
   const [reviews, setReviews] = useState([]);
+  const [isEnrolled, setIsEnrolled] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
-      const [courseData, reviewsData] = await Promise.all([
-        api.get(`/courses/${id}`),
-        api.get(`/reviews/course/${id}`),
-      ]);
+      try {
+        const [courseData, reviewsData] = await Promise.all([
+          api.get(`/courses/${id}`),
+          api.get(`/reviews/course/${id}`),
+        ]);
 
-      setCourse(courseData);
-      setReviews(reviewsData || []);
-      setLoading(false);
+        setCourse(courseData || null);
+        setReviews(reviewsData?.reviews || []);
+      } catch {
+        setCourse(null);
+        setReviews([]);
+      } finally {
+        setLoading(false);
+      }
     };
     fetchData();
   }, [id]);
+
+  useEffect(() => {
+    if (authLoading || !isAuthenticated) {
+      setIsEnrolled(false);
+      return;
+    }
+
+    const checkAccess = async () => {
+      try {
+        const data = await api.get(`/enrollments/${id}/check`);
+        setIsEnrolled(Boolean(data?.is_enrolled || data?.is_teacher));
+      } catch {
+        setIsEnrolled(false);
+      }
+    };
+
+    checkAccess();
+  }, [id, isAuthenticated, authLoading]);
 
   if (loading) {
     return (
@@ -69,6 +94,7 @@ export default function CourseDetailPage({ params }) {
   const levelColor = getLevelColor(course.level);
   const hoursTotal = Math.round((course.duration_minutes || 0) / 60);
   const categoryName = course.categories?.name;
+  const avgRating = Number(course.avg_rating || 0);
 
   const WHAT_YOU_LEARN = [
     'فهم المفاهيم الأساسية وتطبيقها عملياً',
@@ -117,7 +143,7 @@ export default function CourseDetailPage({ params }) {
                 <div className="flex flex-wrap items-center gap-5 text-sm">
                   <div className="flex items-center gap-1.5">
                     <Star size={16} className="text-amber-400 fill-amber-400" />
-                    <span className="font-bold text-amber-400">{course.avg_rating?.toFixed(1) || '4.5'}</span>
+                    <span className="font-bold text-amber-400">{avgRating > 0 ? avgRating.toFixed(1) : '4.5'}</span>
                     <span className="text-indigo-300">({formatNumber(course.enrollment_count || 0)} طالب)</span>
                   </div>
                   <div className="flex items-center gap-1.5 text-indigo-300">
@@ -168,7 +194,13 @@ export default function CourseDetailPage({ params }) {
                     )}
                   </div>
 
-                  {isAuthenticated ? (
+                  {isAuthenticated && isEnrolled ? (
+                    <Link href="/student/my-courses">
+                      <Button fullWidth size="lg" leftIcon={<Play size={18} />}>
+                        ابدأ التعلم
+                      </Button>
+                    </Link>
+                  ) : isAuthenticated ? (
                     <Link href={`/checkout/${id}`}>
                       <Button fullWidth size="lg" leftIcon={<Play size={18} />}>
                         {course.price === 0 ? 'التسجيل مجاناً' : 'اشترك الآن'}
@@ -265,7 +297,13 @@ export default function CourseDetailPage({ params }) {
             <div className="text-xl font-black text-gray-900">
               {course.price === 0 ? <span className="text-emerald-600">مجاني</span> : formatPrice(course.price)}
             </div>
-            {isAuthenticated ? (
+            {isAuthenticated && isEnrolled ? (
+              <Link href="/student/my-courses">
+                <Button size="lg" leftIcon={<Play size={18} />}>
+                  ابدأ التعلم
+                </Button>
+              </Link>
+            ) : isAuthenticated ? (
               <Link href={`/checkout/${id}`}>
                 <Button size="lg" leftIcon={<Play size={18} />}>
                   {course.price === 0 ? 'التسجيل مجاناً' : 'اشترك الآن'}

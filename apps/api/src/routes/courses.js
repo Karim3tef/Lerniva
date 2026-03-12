@@ -1,6 +1,7 @@
 import express from 'express';
 import {
   listCourses,
+  listCategories,
   getCourse,
   createCourse,
   updateCourse,
@@ -15,6 +16,7 @@ const router = express.Router();
 
 // Public routes
 router.get('/', listCourses);
+router.get('/categories', listCategories);
 
 // Teacher routes (specific routes before dynamic :id routes)
 router.get('/teacher/mine', authenticate, requireRole('teacher'), getTeacherCourses);

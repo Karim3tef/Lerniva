@@ -50,6 +50,88 @@ export async function createCheckout(req, res, next) {
   }
 }
 
+// POST /api/payments/confirm - Confirm checkout session and ensure enrollment
+export async function confirmCheckout(req, res, next) {
+  try {
+    const studentId = req.user.id;
+    const { sessionId } = req.body;
+
+    if (!sessionId) {
+      return res.status(400).json({ error: 'sessionId مطلوب' });
+    }
+
+    const session = await stripeService.getCheckoutSession(sessionId);
+
+    if (!session || session.mode !== 'payment' || session.payment_status !== 'paid') {
+      return res.status(400).json({ error: 'جلسة الدفع غير مكتملة' });
+    }
+
+    const { courseId, studentId: metadataStudentId } = session.metadata || {};
+    if (!courseId || !metadataStudentId) {
+      return res.status(400).json({ error: 'بيانات الجلسة غير مكتملة' });
+    }
+
+    if (metadataStudentId !== studentId) {
+      return res.status(403).json({ error: 'غير مسموح' });
+    }
+
+    const courseResult = await pool.query(
+      'SELECT id, price FROM courses WHERE id = $1',
+      [courseId]
+    );
+
+    if (courseResult.rows.length === 0) {
+      return res.status(404).json({ error: 'الدورة غير موجودة' });
+    }
+
+    const amount = Number(session.amount_total || 0) / 100;
+    const currency = (session.currency || 'egp').toLowerCase();
+    const platformAmount = amount * 0.20;
+    const teacherAmount = amount - platformAmount;
+
+    // Always ensure course access even if payment-row persistence fails for any schema mismatch.
+    await pool.query(
+      `
+      INSERT INTO enrollments (course_id, student_id)
+      VALUES ($1, $2)
+      ON CONFLICT (course_id, student_id) DO NOTHING
+      `,
+      [courseId, studentId]
+    );
+
+    let paymentRecorded = true;
+    try {
+      await pool.query(
+        `
+        INSERT INTO payments (
+          student_id, course_id, amount, teacher_amount, platform_amount,
+          currency, status, stripe_session_id, stripe_payment_intent_id, paid_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, 'completed', $7, $8, NOW())
+        ON CONFLICT (stripe_session_id) DO NOTHING
+        `,
+        [
+          studentId,
+          courseId,
+          amount,
+          teacherAmount,
+          platformAmount,
+          currency,
+          session.id,
+          session.payment_intent,
+        ]
+      );
+    } catch (paymentErr) {
+      paymentRecorded = false;
+      console.error('Payment insert failed after enrollment confirmation:', paymentErr.message);
+    }
+
+    res.json({ confirmed: true, courseId, paymentRecorded });
+  } catch (error) {
+    next(error);
+  }
+}
+
 // GET /api/payments/mine - Get payment history for student
 export async function getMyPayments(req, res, next) {
   try {
