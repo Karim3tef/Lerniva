@@ -1,4 +1,4 @@
-const BASE = process.env.NEXT_PUBLIC_API_URL;
+const BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api').replace(/\/$/, '');
 let accessToken = null;
 let refreshPromise = null;
 
@@ -21,10 +21,15 @@ function isPublicAuthRoute(path) {
 async function req(method, path, data) {
   const headers = { 'Content-Type': 'application/json' };
   if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
-  const res = await fetch(`${BASE}${path}`, {
-    method, headers, credentials: 'include',
-    body: data ? JSON.stringify(data) : undefined,
-  });
+  let res;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      method, headers, credentials: 'include',
+      body: data ? JSON.stringify(data) : undefined,
+    });
+  } catch {
+    throw new Error(`تعذر الاتصال بالخادم (${BASE}). تأكد أن خدمة API تعمل.`);
+  }
 
   if (res.status === 401 && !isPublicAuthRoute(path)) {
     const ok = await tryRefresh();

@@ -42,11 +42,11 @@ async function createEmailVerificationToken(userId) {
 }
 
 async function sendVerificationEmail(user) {
-  if (!emailService.isConfigured()) return false;
+  if (!emailService.isConfigured()) return { sent: false, durationMs: 0 };
   const token = await createEmailVerificationToken(user.id);
   const verifyUrl = `${env.frontendUrl}/verify-email?token=${token}&email=${encodeURIComponent(user.email)}`;
-  await emailService.sendEmailVerification(user.email, user.full_name, verifyUrl);
-  return true;
+  const result = await emailService.sendEmailVerification(user.email, user.full_name, verifyUrl);
+  return { sent: true, durationMs: result?.durationMs || 0 };
 }
 
 function runInBackground(task, label) {
@@ -55,6 +55,51 @@ function runInBackground(task, label) {
       console.error(`[background:${label}] failed`, error?.message || error);
     });
   });
+}
+
+async function issuePasswordResetByEmail(email) {
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  console.log(`[auth] issuePasswordResetByEmail: Processing request for ${normalizedEmail}`);
+
+  const result = await pool.query(
+    'SELECT id, full_name, email FROM users WHERE LOWER(email) = LOWER($1)',
+    [normalizedEmail]
+  );
+
+  if (result.rows.length === 0) {
+    console.log(`[auth] issuePasswordResetByEmail: User not found for ${normalizedEmail}`);
+    return;
+  }
+
+  const user = result.rows[0];
+  const resetToken = crypto.randomBytes(32).toString('hex');
+  const resetTokenHash = crypto.createHash('sha256').update(resetToken).digest('hex');
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+
+  await pool.query(
+    `INSERT INTO refresh_tokens (user_id, token_hash, expires_at, revoked)
+     VALUES ($1, $2, $3, false)
+     ON CONFLICT (token_hash) DO UPDATE SET expires_at = $3`,
+    [user.id, resetTokenHash, expiresAt]
+  );
+
+  const resetUrl = `${env.frontendUrl}/reset-password?token=${resetToken}`;
+
+  if (emailService.isConfigured()) {
+    console.log(`[auth] Sending password reset email to ${user.email}`);
+    runInBackground(
+      () => emailService.sendPasswordReset(user.email, user.full_name, resetUrl),
+      'password-reset'
+    );
+  } else {
+    console.warn('[auth] Email service NOT configured. Password reset email will not be sent.');
+    if (env.nodeEnv === 'development') {
+      console.log('=================================================================');
+      console.log(`[DEV MODE] Password Reset Link for ${user.email}:`);
+      console.log(resetUrl);
+      console.log('=================================================================');
+    }
+  }
 }
 
 export const authController = {
@@ -93,10 +138,14 @@ export const authController = {
       const user = result.rows[0];
 
       let verificationEmailSent = false;
-      if (env.email.requireVerification) {
-        verificationEmailSent = emailService.isConfigured();
-        if (verificationEmailSent) {
-          runInBackground(() => sendVerificationEmail(user), 'email-verification');
+      let emailDurationMs = 0;
+      if (env.email.requireVerification && emailService.isConfigured()) {
+        try {
+          const emailResult = await sendVerificationEmail(user);
+          verificationEmailSent = emailResult.sent;
+          emailDurationMs = emailResult.durationMs;
+        } catch (err) {
+          console.error('[register] verification email failed', err?.message);
         }
       }
 
@@ -107,6 +156,7 @@ export const authController = {
             : 'تم إنشاء الحساب. تعذر إرسال بريد التأكيد حالياً',
           emailVerificationRequired: true,
           emailVerificationSent: verificationEmailSent,
+          emailDurationMs,
           user: {
             id: user.id,
             full_name: user.full_name,
@@ -293,42 +343,7 @@ export const authController = {
   async forgotPassword(req, res, next) {
     try {
       const { email } = req.body;
-      const normalizedEmail = String(email || '').trim().toLowerCase();
-
-      // Find user
-      const result = await pool.query(
-        'SELECT id, full_name, email FROM users WHERE LOWER(email) = LOWER($1)',
-        [normalizedEmail]
-      );
-
-      // Always return success to prevent email enumeration
-      if (result.rows.length === 0) {
-        return res.json({ message: 'إذا كان البريد مسجلاً، ستتلقى رابط إعادة تعيين كلمة المرور' });
-      }
-
-      const user = result.rows[0];
-
-      // Generate reset token (valid for 1 hour)
-      const resetToken = crypto.randomBytes(32).toString('hex');
-      const resetTokenHash = crypto.createHash('sha256').update(resetToken).digest('hex');
-      const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
-
-      // Store reset token (you might want to create a password_reset_tokens table)
-      await pool.query(
-        `INSERT INTO refresh_tokens (user_id, token_hash, expires_at, revoked)
-         VALUES ($1, $2, $3, false)
-         ON CONFLICT (token_hash) DO UPDATE SET expires_at = $3`,
-        [user.id, resetTokenHash, expiresAt]
-      );
-
-      if (emailService.isConfigured()) {
-        const resetUrl = `${env.frontendUrl}/reset-password?token=${resetToken}`;
-        runInBackground(
-          () => emailService.sendPasswordReset(user.email, user.full_name, resetUrl),
-          'password-reset'
-        );
-      }
-
+      await issuePasswordResetByEmail(email);
       res.json({ message: 'إذا كان البريد مسجلاً، ستتلقى رابط إعادة تعيين كلمة المرور' });
     } catch (error) {
       next(error);
@@ -338,9 +353,27 @@ export const authController = {
   // POST /api/auth/reset-password
   async resetPassword(req, res, next) {
     try {
-      const { token, newPassword } = req.body;
+      const { token, newPassword, password, email } = req.body;
+      const tokenValue = String(token || '').trim();
+      const passwordValue = String(newPassword || password || '');
 
-      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+      // Compatibility path for older clients that mistakenly call reset endpoint from forgot form.
+      const looksLikeEmailToken = tokenValue.includes('@') && !passwordValue;
+      const emailForForgotFlow = email || (looksLikeEmailToken ? tokenValue : '');
+      if (emailForForgotFlow) {
+        await issuePasswordResetByEmail(emailForForgotFlow);
+        return res.json({ message: 'إذا كان البريد مسجلاً، ستتلقى رابط إعادة تعيين كلمة المرور' });
+      }
+
+      if (!tokenValue) {
+        return res.status(400).json({ error: 'رمز إعادة التعيين مطلوب' });
+      }
+
+      if (passwordValue.length < 8) {
+        return res.status(400).json({ error: 'كلمة المرور يجب أن تكون 8 أحرف على الأقل' });
+      }
+
+      const tokenHash = crypto.createHash('sha256').update(tokenValue).digest('hex');
 
       // Find valid reset token
       const result = await pool.query(
@@ -359,11 +392,16 @@ export const authController = {
       const userId = result.rows[0].user_id;
 
       // Hash new password
-      const password_hash = await jwtService.hashPassword(newPassword);
+      const password_hash = await jwtService.hashPassword(passwordValue);
 
-      // Update password
+      // Update password AND verify email (since they accessed the reset link via email)
       await pool.query(
-        'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
+        `UPDATE users 
+         SET password_hash = $1, 
+             email_verified = true, 
+             email_verified_at = COALESCE(email_verified_at, NOW()),
+             updated_at = NOW() 
+         WHERE id = $2`,
         [password_hash, userId]
       );
 
@@ -448,8 +486,13 @@ export const authController = {
         return res.status(503).json({ error: 'خدمة البريد غير مهيأة' });
       }
 
-      runInBackground(() => sendVerificationEmail(user), 'email-resend-verification');
-      res.json({ message: 'تم إرسال بريد التأكيد' });
+      try {
+        const emailResult = await sendVerificationEmail(user);
+        res.json({ message: 'تم إرسال بريد التأكيد', emailDurationMs: emailResult.durationMs });
+      } catch (err) {
+        console.error('[resend-verification] email failed', err?.message);
+        res.status(500).json({ error: 'فشل إرسال بريد التأكيد' });
+      }
     } catch (error) {
       next(error);
     }
