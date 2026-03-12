@@ -64,7 +64,7 @@ function ResetPasswordContent() {
                 <CheckCircle size={32} className="text-emerald-600" />
               </div>
               <h1 className="text-2xl font-black text-gray-900 mb-2">تم التحديث!</h1>
-              <p className="text-gray-500 text-sm">جارٍ تحويلك إلى لوحة التحكم…</p>
+              <p className="text-gray-500 text-sm">جارٍ تحويلك لتسجيل الدخول…</p>
             </>
           )}
         </div>

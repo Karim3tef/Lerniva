@@ -358,6 +358,7 @@ export const authController = {
       const passwordValue = String(newPassword || password || '');
 
       // Compatibility path for older clients that mistakenly call reset endpoint from forgot form.
+      // TODO: Remove after all clients are updated to use the /auth/forgot-password endpoint.
       const looksLikeEmailToken = tokenValue.includes('@') && !passwordValue;
       const emailForForgotFlow = email || (looksLikeEmailToken ? tokenValue : '');
       if (emailForForgotFlow) {
@@ -405,10 +406,12 @@ export const authController = {
         [password_hash, userId]
       );
 
-      // Revoke reset token
+      // Revoke all refresh tokens for this user (reset token + any active sessions).
+      // This forces re-login and prevents a compromised account from remaining accessible
+      // after the legitimate owner resets their password.
       await pool.query(
-        'UPDATE refresh_tokens SET revoked = true WHERE token_hash = $1',
-        [tokenHash]
+        'UPDATE refresh_tokens SET revoked = true WHERE user_id = $1',
+        [userId]
       );
 
       res.json({ message: 'تم تغيير كلمة المرور بنجاح' });
